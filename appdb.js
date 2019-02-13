@@ -2,7 +2,7 @@ var mysql = require('mysql');
 var tunnel = require('tunnel-ssh');
 module.exports = function (server) {
     return new Object({
-            tunnelPort: 33334,          // can really be any free port used for tunneling
+            tunnelPort: 33333,          // can really be any free port used for tunneling
             /**
              * DB server configuration. Please note that due to the tunneling the server host
              * is localhost and the server port is the tunneling port. It is because the tunneling
@@ -10,10 +10,10 @@ module.exports = function (server) {
              */
             dbServer: server || {
                 host: '127.0.0.1',
-                port: 33334,
+                port: 33333,
                 user: 'root',
                 password: 'WENhuai2158~!@',
-                database: 're_dev'
+                database: 're_prod'
             },
             /**
              * Default configuration for the SSH tunnel
@@ -22,7 +22,7 @@ module.exports = function (server) {
                 remoteHost: '127.0.0.1', // mysql server host
                 remotePort: 3306, // mysql server port
                 localHost: '127.0.0.1',
-                localPort: 33334, // a available local port
+                localPort: 33333, // a available local port
                 verbose: true, // dump information to stdout
                 disabled: false, //set this to true to disable tunnel (useful to keep architecture for local connections)
                 sshConfig: { //ssh2 configuration (https://github.com/mscdex/ssh2)
@@ -90,6 +90,9 @@ module.exports = function (server) {
                     }
 
                     me.connection  = me.connect(callback);
+                    setTimeout(function(){
+                        me.tunnel.close();
+                    },3000);
                 });
             },
 

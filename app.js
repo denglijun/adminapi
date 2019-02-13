@@ -5,22 +5,23 @@ const json = require('koa-json')
 const onerror = require('koa-onerror')
 const bodyparser = require('koa-bodyparser')
 const logger = require('koa-logger')
-
-
+const jwt = require('koa-jwt');
+const secret = 'wenhuaiyunxiang';
 const index = require('./routes/index')
 const users = require('./routes/users')
 const roles = require('./routes/roles')
 const tongji = require('./routes/tongji')
-
+const business = require('./routes/business')
+const appUser = require('./routes/appUser');
+const node = require('./routes/node');
 const cors = require('koa2-cors'); //解决跨域
-
 
 // error handler
 onerror(app)
 
 // middlewares
 app.use(bodyparser({
-  enableTypes:['json', 'form', 'text']
+    enableTypes: ['json', 'form', 'text']
 }))
 app.use(json())
 app.use(logger())
@@ -31,18 +32,25 @@ app.use(require('koa-static')(__dirname + '/public'))
 // }))
 
 // logger
-app.use(async (ctx, next) => {
-  const start = new Date()
-  await next()
-  const ms = new Date() - start
-  console.log(`${ctx.method} ${ctx.url} - ${ms}ms`)
-})
-
-// routes
+app.use(async(ctx, next) => {
+        const start = new Date()
+        await next()
+        const ms = new Date() - start
+        console.log(`${ctx.method} ${ctx.url} - ${ms}ms`)
+    })
+    //无需授权可以访问的接口
+app.use(jwt({ secret: secret }).unless({ path: [/^\/users\/login/] }))
+    // routes
 app.use(index.routes(), index.allowedMethods())
 app.use(users.routes(), users.allowedMethods())
 app.use(roles.routes(), roles.allowedMethods())
 app.use(tongji.routes(), tongji.allowedMethods())
+app.use(business.routes(), business.allowedMethods())
+app.use(appUser.routes(), appUser.allowedMethods())
+app.use(node.routes(), node.allowedMethods())
+
+
+
 
 
 //配置跨域
@@ -62,7 +70,7 @@ app.use(tongji.routes(), tongji.allowedMethods())
 
 // error-handling
 app.on('error', (err, ctx) => {
-  console.error('server error', err, ctx)
+    console.error('server error', err, ctx)
 });
 
 module.exports = app

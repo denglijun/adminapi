@@ -4,16 +4,16 @@ const router = require('koa-router')();
 const Role = require('../models').role;
 router.prefix('/roles');
 
-router.post('/add',async ( ctx,next ) => {
+router.post('/add', async(ctx, next) => {
     let params = ctx.request.body;
-    let re = await Role.create({rolename:params.rolename,englishname:params.englishname,is_active:params.is_active,pid:params.pid,sort:params.sort});
-    if ( re.dataValues ) {
+    let re = await Role.create({ rolename: params.rolename, englishname: params.englishname, is_active: params.is_active, pid: params.pid, sort: params.sort });
+    if (re.dataValues) {
         ctx.response.body = {
             code: 200,
             msg: '操作成功',
             data: re.dataValues
         };
-        
+
     } else {
         ctx.response.body = {
             code: 10002,
@@ -21,16 +21,16 @@ router.post('/add',async ( ctx,next ) => {
             data: ''
         };
     }
-    
+
 });
-router.get('/delete',async ( ctx,next ) => {
+router.get('/delete', async(ctx, next) => {
     let params = ctx.query.roleIds;
     let re = await Role.destroy({
         where: {
-          id: params
+            id: params
         }
-      });
-    if ( re > 0 ) {
+    });
+    if (re > 0) {
         ctx.response.body = {
             code: 200,
             msg: '操作成功',
@@ -44,21 +44,56 @@ router.get('/delete',async ( ctx,next ) => {
         };
     }
 });
-router.post('/update',async ( ctx,next ) => {
+router.post('/update', async(ctx, next) => {
     let params = ctx.request.body;
     let re = await Role.update({
-        rolename:params.rolename,englishname:params.englishname,is_active:params.is_active,pid:params.pid,sort:params.sort
-      }, {
+        rolename: params.rolename,
+        englishname: params.englishname,
+        is_active: params.is_active,
+        pid: params.pid,
+        sort: params.sort
+    }, {
         where: {
-          id:  params.id
+            id: params.id
         }
-      });
+    });
 });
-router.get('/list',async (ctx,next ) => {
+router.get('/list', async(ctx, next) => {
     let roles = await Role.findAll({
-        attributes: ['id','rolename','NIDS','englishname','is_active','pid','sort','createdAt','updatedAt']
+        attributes: ['id', 'rolename', 'NIDS', 'englishname', 'is_active', 'pid', 'sort', 'createdAt', 'updatedAt']
     });
     ctx.response.body = roles;
+});
+
+router.get('/setResources', async(ctx, next) => {
+    let roleId = ctx.query.roleId;
+    let resourceIds = ctx.query.resourceIds;
+    let re = await Role.update({
+        NIDS: resourceIds
+    }, {
+        where: {
+            id: roleId
+        }
+    });
+    ctx.response.body = {
+        code: 200,
+        msg: '配置成功',
+        data: ''
+    };
+});
+router.get('/resources', async(ctx, next) => {
+    let roleId = ctx.query.id;
+    let result = await Role.find({
+        where: {
+            id: roleId
+        }
+    });
+    let idArray = result.NIDS.split(',');
+    ctx.response.body = {
+        code: 200,
+        msg: '配置成功',
+        data: idArray
+    };
 });
 
 module.exports = router
