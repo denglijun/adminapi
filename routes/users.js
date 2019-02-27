@@ -33,8 +33,8 @@ router.post('/login', async(ctx, next) => {
         if (user[0].pwd == pwd) {
             // 用户token
             const userToken = {
-                name: user.username,
-                id: user.id
+                name: user[0].username,
+                id: user[0].id
             }
             const token = jwt.sign(userToken, secret, { expiresIn: '1h' }) // 签发token,有效期1h
             ctx.response.body = {

@@ -7,7 +7,10 @@ const con = require('../appdb3')(); //本地
 const moment = require('moment');
 const time = moment().format('YYYY-MM-DD HH:mm:ss');
 const crypto = require('crypto');
-
+const systemLog = require('../lib/systemLog');
+const common = require('../lib/common');
+const jwt = require('jsonwebtoken');
+const secret = 'wenhuaiyunxiang';
 
 router.prefix('/business');
 
@@ -448,7 +451,7 @@ router.get("/blindList", async(ctx, next) => {
                 } else {
                     if (result[0].num > 0) {
                         let total = result[0].num;
-                        con.query('select * from users where role=1 order by createdAt desc limit ?,?', [(parseInt(page) - 1) * parseInt(pagenum), parseInt(pagenum)], function(err, result) {
+                        con.query('select users.*,settings.jsonValues as setting from users left join settings on users.id=settings.userId where role=1 order by createdAt desc limit ?,?', [(parseInt(page) - 1) * parseInt(pagenum), parseInt(pagenum)], function(err, result) {
                             if (err) {
                                 resolve({
                                     code: 10004,
@@ -474,7 +477,7 @@ router.get("/blindList", async(ctx, next) => {
         })
     } else {
         var re = await new Promise((resolve, reject) => {
-            con.query('select * from users where tel=? and role=1', [key], function(err, result) {
+            con.query('select users.*,setting.jsonValues as settings from users left join settings on users.id=settings.usersId where tel=? and role=1', [key], function(err, result) {
                 if (err) {
                     resolve({
                         code: 10004,
@@ -586,6 +589,111 @@ router.post('/blindAdd', async(ctx, next) => {
     ctx.response.body = re;
 });
 
+router.post("/blindSetting", async(ctx, next) => {
+    let blindId = ctx.request.body.id;
+    let stg = parseInt(ctx.request.body.stg.trim());
+    let stgArr = [0, 1, 2];
+    let re = {};
+    do {
+        if (!blindId) {
+            re = {
+                code: 10010,
+                msg: '参数视友id有误'
+            };
+            break;
+        }
+        if (!stg || stgArr.indexOf(stg) == -1) {
+            re = {
+                code: 10010,
+                msg: '参数stg值有误'
+            };
+            break;
+        }
+        re = await new Promise((resolve, reject) => {
+            con.query('select * from settings where userId=?', [blindId], function(err, result) {
+                if (err) {
+                    resolve({
+                        code: 10004,
+                        msg: '网络出错',
+                        data: ''
+                    });
+                } else {
+                    resolve({
+                        code: 200,
+                        msg: '操作成功',
+                        data: result
+                    });
+                }
+            });
+        });
+        if (re.code == 200) {
+            if (re.data.length <= 0) {
+                let jsonValues = {
+                    "refused": {
+                        "startTime": "00:00",
+                        "endTime": "00:00",
+                    },
+                    "cs_enabled": 1,
+                    "vt_enabled": 1,
+                    "ff_enabled": 1,
+                    "stg": stg
+                };
+                jsonValues = JSON.stringify(jsonValues);
+                re = await new Promise((resolve, reject) => {
+                    con.query('insert into settings (jsonValues,userId) values (?,?)', [jsonValues, blindId], function(err, result) {
+                        console.log(err);
+                        if (err) {
+                            resolve({
+                                code: 10004,
+                                msg: '网络出错',
+                                data: ''
+                            });
+                        } else {
+                            resolve({
+                                code: 200,
+                                msg: '配置成功',
+                                data: result
+                            });
+                        }
+                    });
+                });
+            } else {
+                let setting = JSON.parse(re.data[0].jsonValues);
+                let jsonValues = {
+                    refused: {
+                        startTime: setting.refused.startTime,
+                        endTime: setting.refused.endTime,
+                    },
+                    cs_enabled: setting.cs_enabled,
+                    vt_enabled: setting.vt_enabled,
+                    ff_enabled: setting.ff_enabled,
+                    stg: stg
+                };
+                jsonValues = JSON.stringify(jsonValues);
+                re = await new Promise((resolve, reject) => {
+                    con.query('update settings set jsonValues=? where userId=? ', [jsonValues, blindId], function(err, result) {
+                        if (err) {
+                            resolve({
+                                code: 10004,
+                                msg: '网络出错',
+                                data: ''
+                            });
+                        } else {
+                            resolve({
+                                code: 200,
+                                msg: '配置更新成功',
+                                data: result
+                            });
+                        }
+                    });
+                });
+            }
+        } else {
+            break;
+        }
+    } while (false)
+    ctx.response.body = re;
+});
 /**
  * 用户管理 
  */
@@ -855,6 +963,22 @@ router.post('/charge', async(ctx, next) => {
     let re = {};
     let chargeTel = ctx.request.body.params.tel;
     let chargeId = ctx.request.body.params.chargeId; //充值套餐id
+    let money = parseFloat(ctx.request.body.params.money); //赠送金额
+
+    let token = ctx.headers.authorization;
+    token = token.split(' ');
+    token = token[1];
+    let detoken = jwt.verify(token, secret);
+    let uid = detoken.id;
+    let uname = detoken.name;
+    // let uid = await new Promise((resolve, reject) => {
+    //     jwt.verify(token, secret, function(err, decoded) {
+    //         console.log(decoded);
+    //         if (!err) {
+    //             resolve(decoded.id);
+    //         }
+    //     })
+    // });
     let user = await new Promise((resolve, reject) => {
         con.query('select * from users where tel=? and role=1', [chargeTel], function(err, result) {
             if (err) {
@@ -872,25 +996,49 @@ router.post('/charge', async(ctx, next) => {
             }
         })
     });
+
     if (user.code == 200 && user.data.length > 0) {
         let receiverId = user.data[0].id;
-        let chargeRules = await new Promise((resolve, reject) => {
-            con.query('select * from charge_rules where id=? and discarded=0', [chargeId], function(err, result) {
-                if (err) {
-                    resolve({
-                        code: 10004,
-                        msg: '网络出错',
-                        data: ''
-                    });
-                } else {
-                    resolve({
-                        code: 200,
-                        msg: '查询成功',
-                        data: result
-                    })
-                }
-            })
-        });
+        let pay_money = 0;
+        let pay_minutes = 0;
+        let free_minutes = money;
+        let pay_minutes_left = 0;
+        let free_minutes_left = money;
+        let valid_time = 0;
+        if (chargeId > 0) {
+            const chargeRules = await new Promise((resolve, reject) => {
+                con.query('select * from charge_rules where id=? and discarded=0', [chargeId], function(err, result) {
+                    if (err) {
+                        resolve({
+                            code: 10004,
+                            msg: '网络出错',
+                            data: ''
+                        });
+                    } else {
+                        resolve({
+                            code: 200,
+                            msg: '查询成功',
+                            data: result
+                        })
+                    }
+                })
+            });
+
+            if (chargeRules.code != 200 && chargeRules.data.length <= 0) {
+                re = {
+                    code: 10005,
+                    msg: '充值套餐有误'
+                };
+                return;
+            }
+            pay_money = chargeRules.data[0].pay_money;
+            pay_minutes = chargeRules.data[0].pay_minutes;
+            free_minutes = free_minutes + parseFloat(chargeRules.data[0].free_minutes);
+            pay_minutes_left = chargeRules.data[0].pay_minutes;
+            free_minutes_left = free_minutes_left + parseFloat(chargeRules.data[0].free_minutes);
+            valid_time = chargeRules.data[0].valid_time;
+        }
+
         let ba = await new Promise((resolve, reject) => {
             con.query('select * from blind_account where user_id = ?', [receiverId], function(err, result) {
                 if (err) {
@@ -908,142 +1056,169 @@ router.post('/charge', async(ctx, next) => {
                 }
             })
         });
-        if (chargeRules.code == 200 && chargeRules.data.length > 0) {
-            //创建充值订单
-            let orderid = idMaker();
-            let charger_id = 0;
-            let receiver_id = receiverId;
-            let charge_type = 0;
-            let pay_money = chargeRules.data[0].pay_money;
-            let pay_minutes = chargeRules.data[0].pay_minutes;
-            let free_minutes = chargeRules.data[0].free_minutes;
-            let pay_minutes_left = chargeRules.data[0].pay_minutes;
-            let free_minutes_left = chargeRules.data[0].free_minutes;
-            let pay_channel = '系统';
-            let pay_orderinfo = '后台充值';
-            let valid_time = chargeRules.data[0].valid_time;
-            let valid_start = '';
-            let valid_end = '';
-            if (ba.code == 200 && ba.data.length > 0) {
-                valid_start = ba.data[0].valid_time;
-                valid_end = ba.data[0].valid_time + valid_time;
-            } else {
-                valid_start = '';
-                valid_end = valid_time;
-            }
-            let t = moment().format('YYYY-MM-DD HH:mm:ss');
+        //创建充值订单
+        let orderid = idMaker();
+        let charger_id = 0;
+        let receiver_id = receiverId;
+        let charge_type = 0;
 
-            let chargeOrder = await new Promise((resolve, reject) => {
-                con.query('insert into charge_order (`orderid`,`charger_id`,`receiver_id`,`charge_type`,`pay_money`,`pay_minutes`,`free_minutes`,`pay_minutes_left`,`free_minutes_left`,`pay_channel`,`pay_orderinfo`,`valid_time`,`valid_start`,`valid_end`,`createdAt`,`updatedAt`) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [orderid, charger_id, receiver_id, charge_type, pay_money, pay_minutes, free_minutes, pay_minutes_left, free_minutes_left, pay_channel, pay_orderinfo, valid_time, valid_start, valid_end, t, t], function(err, result) {
-                    console.log(err);
-                    if (err) {
-                        resolve({
-                            code: 10004,
-                            msg: '网络出错',
-                            data: ''
-                        });
-                    } else {
-                        resolve({
-                            code: 200,
-                            msg: '插入成功',
-                            data: result
-                        })
-                    }
-                })
-            });
-            let changeId = idMaker();
-            let user_id = receiverId;
-            let paytime_old = parseFloat(ba.data[0].paytime_left);
-            let paytime_new = paytime_old + parseFloat(pay_minutes);;
-            let freetime_old = parseFloat(ba.data[0].freetime_left);;
-            let freetime_new = freetime_old + parseFloat(free_minutes);
-            let money_new = parseFloat(ba.data[0].money_left) + parseFloat(pay_money);
-            let cardvt_old = ba.data[0].cards_validtime;
-            let cardvt_new = ba.data[0].cards_validtime;
-            let validtime_old = ba.data[0].valid_time;
-            let validtime_new = ba.data[0].valid_time + valid_time;
-            let related_chatid = 0;
-            let related_chargeid = orderid;
-            let last_changeid = ba.data[0].last_changeid;
-            let pay_money_str = number_format(pay_money, 2);
-            let desc = `充值${pay_money_str}元`;
-            let detail = `${chargeTel} ${pay_channel} ${pay_orderinfo}`;
-            let changed_minutes = parseFloat(pay_minutes) + parseFloat(free_minutes);
-            let changed_minutes_str = number_format(changed_minutes, 2);
-            let changed = `+${changed_minutes_str}元`;
-            let minutes_after_charge = paytime_new + freetime_new;
-            let minutes_after_charge_str = number_format(minutes_after_charge, 2);
-            let newvalue = `${minutes_after_charge_str}元`;
-            let t1 = moment().format('YYYY-MM-DD HH:mm:ss');
-
-            let blindAccountChangeLog = await new Promise((resolve, reject) => {
-                con.query('insert into blindaccount_changelog (`changeid`,`user_id`,`paytime_old`,`paytime_new`,`freetime_old`,`freetime_new`,`cardvt_old`,`cardvt_new`,`validtime_old`,`validtime_new`,`related_chatid`,`related_chargeid`,`last_changeid`,`desc`,`detail`,`changed`,`newvalue`,`createdAt`,`updatedAt`) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [changeId, user_id, paytime_old, paytime_new, freetime_old, freetime_new, cardvt_old, cardvt_new, validtime_old, validtime_new, related_chatid, related_chargeid, last_changeid, desc, detail, changed, newvalue, t1, t1], function(err, result) {
-                    console.log(err);
-                    if (err) {
-                        resolve({
-                            code: 10004,
-                            msg: '网络出错',
-                            data: ''
-                        });
-                    } else {
-                        resolve({
-                            code: 200,
-                            msg: '插入成功',
-                            data: result
-                        })
-                    }
-                })
-            });
-            if (ba.code == 200 && ba.data.length > 0) {
-                let v = ba.data[0].version + 1;
-                let t2 = moment().format('YYYY-MM-DD HH:mm:ss');
-
-                let blindAccount = await new Promise((resolve, reject) => {
-                    con.query('update blind_account set paytime_left=?,freetime_left=?,valid_time=?,money_left=?,last_changeid=?,version=?,updatedAt=? where user_id=? and version=?', [paytime_new, freetime_new, validtime_new, money_new, changeId, v, t2, user_id, ba.data[0].version], function(err, result) {
-                        console.log(err);
-                        if (err) {
-                            resolve({
-                                code: 10004,
-                                msg: '网络出错',
-                                data: ''
-                            });
-                        } else {
-                            resolve({
-                                code: 200,
-                                msg: '插入成功',
-                                data: result
-                            })
-                        }
-                    })
-                });
-
-            } else {
-                let t2 = moment().format('YYYY-MM-DD HH:mm:ss');
-                let blindAccount = await new Promise((resolve, reject) => {
-                    con.query('insert into blind_account (`user_id`,`paytime_left`,`freetime_left`,`valid_time`,`money_left`,`last_changeid`,`createdAt`,`updatedAt`) values (?,?,?,?,?,?,?,?)', [user_id, paytime_new, freetime_new, validtime_new, money_new, changeId, t2, t2], function(err, result) {
-                        if (err) {
-                            resolve({
-                                code: 10004,
-                                msg: '网络出错',
-                                data: ''
-                            });
-                        } else {
-                            resolve({
-                                code: 200,
-                                msg: '插入成功',
-                                data: result
-                            })
-                        }
-                    })
-                });
-            }
+        let pay_channel = '系统';
+        let pay_orderinfo = '后台充值';
+        let valid_start = 0;
+        let valid_end = 0;
+        if (ba.code == 200 && ba.data.length > 0) {
+            valid_start = ba.data[0].valid_time;
+            valid_end = ba.data[0].valid_time + valid_time;
         } else {
-            re = {
-                code: 10005,
-                msg: '充值套餐有误'
-            };
+            valid_start = 0;
+            valid_end = valid_time;
         }
+        let t = moment().format('YYYY-MM-DD HH:mm:ss');
 
+        let chargeOrder = await new Promise((resolve, reject) => {
+            con.query('insert into charge_order (`orderid`,`charger_id`,`receiver_id`,`charge_type`,`pay_money`,`pay_minutes`,`free_minutes`,`pay_minutes_left`,`free_minutes_left`,`pay_channel`,`pay_orderinfo`,`valid_time`,`valid_start`,`valid_end`,`createdAt`,`updatedAt`) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [orderid, charger_id, receiver_id, charge_type, pay_money, pay_minutes, free_minutes, pay_minutes_left, free_minutes_left, pay_channel, pay_orderinfo, valid_time, valid_start, valid_end, t, t], function(err, result) {
+                console.log(err);
+                if (err) {
+                    resolve({
+                        code: 10004,
+                        msg: '网络出错',
+                        data: ''
+                    });
+                } else {
+                    resolve({
+                        code: 200,
+                        msg: '插入成功',
+                        data: result
+                    })
+                }
+            })
+        });
+        let paytime_old = 0;
+        let freetime_old = 0;
+        let money_new = parseFloat(pay_money);
+        let cardvt_old = 0;
+        let cardvt_new = 0;
+        let validtime_old = 0;
+        let validtime_new = valid_time;
+        let last_changeid = 0;
+        if (ba.code == 200 && ba.data.length > 0) {
+            paytime_old = parseFloat(ba.data[0].paytime_left);
+            freetime_old = parseFloat(ba.data[0].freetime_left);
+            money_new = parseFloat(ba.data[0].money_left) + money_new;
+            cardvt_old = ba.data[0].cards_validtime;
+            cardvt_new = ba.data[0].cards_validtime;
+            validtime_old = ba.data[0].valid_time;
+            validtime_new = ba.data[0].valid_time + validtime_new;
+            last_changeid = ba.data[0].last_changeid;
+        }
+        let changeId = idMaker();
+        let user_id = receiverId;
+        let paytime_new = paytime_old + parseFloat(pay_minutes);
+        let freetime_new = freetime_old + parseFloat(free_minutes);
+        let related_chatid = 0;
+        let related_chargeid = orderid;
+        let pay_money_str = number_format(pay_money, 2);
+        let desc = `充值${pay_money_str}元`;
+        let detail = `${chargeTel} ${pay_channel} ${pay_orderinfo}`;
+        let changed_minutes = parseFloat(pay_minutes) + parseFloat(free_minutes);
+        let changed_minutes_str = number_format(changed_minutes, 2);
+        let changed = `+${changed_minutes_str}元`;
+        let minutes_after_charge = paytime_new + freetime_new;
+        let minutes_after_charge_str = number_format(minutes_after_charge, 2);
+        let newvalue = `${minutes_after_charge_str}元`;
+        let t1 = moment().format('YYYY-MM-DD HH:mm:ss');
+
+
+        let blindAccountChangeLog = await new Promise((resolve, reject) => {
+            con.query('insert into blindaccount_changelog (`changeid`,`user_id`,`paytime_old`,`paytime_new`,`freetime_old`,`freetime_new`,`cardvt_old`,`cardvt_new`,`validtime_old`,`validtime_new`,`related_chatid`,`related_chargeid`,`last_changeid`,`desc`,`detail`,`changed`,`newvalue`,`createdAt`,`updatedAt`) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [changeId, user_id, paytime_old, paytime_new, freetime_old, freetime_new, cardvt_old, cardvt_new, validtime_old, validtime_new, related_chatid, related_chargeid, last_changeid, desc, detail, changed, newvalue, t1, t1], function(err, result) {
+                console.log(err);
+                if (err) {
+                    resolve({
+                        code: 10004,
+                        msg: '网络出错',
+                        data: ''
+                    });
+                } else {
+                    resolve({
+                        code: 200,
+                        msg: '插入成功',
+                        data: result
+                    })
+                }
+            })
+        });
+        if (ba.code == 200 && ba.data.length > 0) {
+            let v = ba.data[0].version + 1;
+            let t2 = moment().format('YYYY-MM-DD HH:mm:ss');
+
+            let blindAccount = await new Promise((resolve, reject) => {
+                con.query('update blind_account set paytime_left=?,freetime_left=?,valid_time=?,money_left=?,last_changeid=?,version=?,updatedAt=? where user_id=? and version=?', [paytime_new, freetime_new, validtime_new, money_new, changeId, v, t2, user_id, ba.data[0].version], function(err, result) {
+                    console.log(err);
+                    if (err) {
+                        resolve({
+                            code: 10004,
+                            msg: '网络出错',
+                            data: ''
+                        });
+                    } else {
+                        resolve({
+                            code: 200,
+                            msg: '更新成功',
+                            data: result
+                        })
+                    }
+                })
+            });
+            if (blindAccount.code == 200　)　 {
+                ip = common.get_client_ip(ctx);
+                let operation = `${uid}为用户${receiverId}选择充值套餐为${chargeId},赠送金额${money}`;
+                systemLog.saveLog(uid, ip, 'update', operation, '后台充值');
+                re = {
+                    code: 200,
+                    msg: "充值成功"
+                };
+            } else {
+                re = {
+                    code: 10007,
+                    msg: "充值失败"
+                };
+            }
+
+        } else {
+            let t2 = moment().format('YYYY-MM-DD HH:mm:ss');
+            let blindAccount = await new Promise((resolve, reject) => {
+                con.query('insert into blind_account (`user_id`,`paytime_left`,`freetime_left`,`valid_time`,`money_left`,`last_changeid`,`createdAt`,`updatedAt`) values (?,?,?,?,?,?,?,?)', [user_id, paytime_new, freetime_new, validtime_new, money_new, changeId, t2, t2], function(err, result) {
+                    if (err) {
+                        resolve({
+                            code: 10004,
+                            msg: '网络出错',
+                            data: ''
+                        });
+                    } else {
+                        resolve({
+                            code: 200,
+                            msg: '插入成功',
+                            data: result
+                        })
+                    }
+                })
+            });
+
+            if (blindAccount.code == 200　)　 {
+                ip = common.get_client_ip(ctx);
+                let operation = `${uid}为用户${receiverId}选择充值套餐为${chargeId},赠送金额${money}`;
+                systemLog.saveLog(uid, ip, 'create', operation, '后台充值');
+                re = {
+                    code: 200,
+                    msg: "充值成功"
+                };
+            } else {
+                re = {
+                    code: 10007,
+                    msg: "充值失败"
+                };
+            }
+        }
     } else {
         re = {
             code: 10006,
