@@ -61,6 +61,9 @@ router.get('/appBlindInfo', async(ctx, next) => {
                                     if (result[index].gender == "2") {
                                         result[index].gender = '女';
                                     }
+                                    if (result[index].createdAt) {
+                                        result[index].createdAt = moment(result[index].createdAt).add(8, 'h').format('YYYY-MM-DD HH:mm:ss');
+                                    }
                                 }
                                 resolve({
                                     code: 200,
@@ -83,6 +86,46 @@ router.get('/appBlindInfo', async(ctx, next) => {
 
             })
         });
+        if (re.data.total && re.data.total > 0) {
+            for (let i in re.data.records) {
+                //最后使用时间
+                let lastUseTime2 = await new Promise((resolve, reject) => {
+                    con.query('select createdAt as lastUseTime from signal_order where caller_uid=? order by createdAt DESC limit 1', [re.data.records[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                //总使用次数
+                let totalTimes2 = await new Promise(function(resolve, reject) {
+                    con.query('select count(*) as totalTimes from signal_order where caller_uid=?', [re.data.records[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                //总使用时长
+                let totalTime2 = await new Promise(function(resolve, reject) {
+                    con.query('select sum(duration2) as totalTime from chat_orders where caller_uid=?', [re.data.records[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                let lut = '';
+                let tts = 0;
+                let tt = 0;
+                if (lastUseTime2 && lastUseTime2.length > 0) {
+                    lut = moment(lastUseTime2[0].lastUseTime).add(8, 'h').format('YYYY-MM-DD HH:mm:ss');
+                }
+                if (totalTimes2 && totalTimes2.length > 0) {
+                    tts = totalTimes2[0].totalTimes;
+                }
+                if (totalTime2 && totalTime2.length > 0) {
+                    tt = common.sec_to_time(totalTime2[0].totalTime);
+                }
+                let temp = { lastUseTime: lut, totalTimes: tts, totalTime: tt };
+                re.data.records[i] = Object.assign(re.data.records[i], temp);
+            }
+        }
+
         ctx.response.body = re;
     } else {
         let re = await new Promise((resolve, reject) => {
@@ -125,6 +168,9 @@ router.get('/appBlindInfo', async(ctx, next) => {
                                     if (result[index].gender == "2") {
                                         result[index].gender = '女';
                                     }
+                                    if (result[index].createdAt) {
+                                        result[index].createdAt = moment(result[index].createdAt).add(8, 'h').format('YYYY-MM-DD HH:mm:ss');
+                                    }
                                 }
                                 resolve({
                                     code: 200,
@@ -147,24 +193,67 @@ router.get('/appBlindInfo', async(ctx, next) => {
 
             })
         });
+        if (re.data.total && re.data.total > 0) {
+            for (let i in re.data.records) {
+                //最后使用时间
+                let lastUseTime2 = await new Promise((resolve, reject) => {
+                    con.query('select createdAt as lastUseTime from signal_order where caller_uid=? order by createdAt DESC limit 1', [re.data.records[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                //总使用次数
+                let totalTimes2 = await new Promise(function(resolve, reject) {
+                    con.query('select count(*) as totalTimes from signal_order where caller_uid=?', [re.data.records[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                //总使用时长
+                let totalTime2 = await new Promise(function(resolve, reject) {
+                    con.query('select sum(duration2) as totalTime from chat_orders where caller_uid=?', [re.data.records[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                let lut = '';
+                let tts = 0;
+                let tt = 0;
+                if (lastUseTime2 && 　lastUseTime2.length > 0) {
+                    lut = moment(lastUseTime2[0].lastUseTime).add(8, 'h').format('YYYY-MM-DD HH:mm:ss');
+                }
+                if (totalTimes2 && totalTimes2.length > 0) {
+                    tts = totalTimes2[0].totalTimes;
+                }
+                if (totalTime2 && totalTime2.length > 0) {
+                    tt = common.sec_to_time(totalTime2[0].totalTime);
+                }
+                let temp = { lastUseTime: lut, totalTimes: tts, totalTime: tt };
+                re.data.records[i] = Object.assign(re.data.records[i], temp);
+            }
+        }
         ctx.response.body = re;
     }
-
-
 });
 
 
 /**
- * APP端亲友用户信息
+ * APP端用户信息
  */
 
-router.get('/appAngelInfo', async(ctx, next) => {
+router.get('/appUserInfo', async(ctx, next) => {
     let page = ctx.query.pageNo;
     let pagenum = ctx.query.pageSize;
     let key = ctx.query.key;
+    let type = 1;
+    let dd = moment(Date.now()).format('YYYYMMDD');
+    if (ctx.query.type) {
+        type = parseInt(ctx.query.type); //1正常展示,2导出excel
+    }
+    let re = {};
     if (key == '' || typeof(key) == 'undefined') {
-        let re = await new Promise((resolve, reject) => {
-            con.query('select count(id) as angelnum  from users where role=2', [], function(err, result) {
+        re = await new Promise((resolve, reject) => {
+            con.query('select count(id) as angelnum  from users', [], function(err, result) {
                 if (err) {
                     resolve({
                         code: 10004,
@@ -174,7 +263,18 @@ router.get('/appAngelInfo', async(ctx, next) => {
                 } else {
                     if (result[0].angelnum > 0) {
                         let total = result[0].angelnum;
-                        con.query('select users.*,balance,profit_total,blindnum from users left join angel_account on users.id = angel_account.user_id left join (select count(*) as blindnum,angelId from `blind2family-through` group by angelId) as p on users.id = p.angelId  where users.role=2 limit ?,?', [(parseInt(page) - 1) * parseInt(pagenum), parseInt(pagenum)], function(err, result) {
+                        let sql = '';
+                        let start = 0;
+                        let end = 0;
+                        if (type == 1) {
+                            start = (parseInt(page) - 1) * parseInt(pagenum);
+                            end = parseInt(pagenum);
+                        }
+                        if (type == 2) {
+                            start = 0;
+                            end = parseInt(total);
+                        }
+                        con.query('select * from users order by createdAt DESC limit ?,?', [start, end], function(err, result) {
                             if (err) {
                                 resolve({
                                     code: 10004,
@@ -185,15 +285,6 @@ router.get('/appAngelInfo', async(ctx, next) => {
                                 for (let index in result) {
                                     let birthday = moment(result[index].birthday).format('YYYY-MM-DD');
                                     result[index].age = common.getAge(birthday);
-                                    if (result[index].profit_total == null) {
-                                        result[index].money_use = '0.00';
-                                    }
-                                    if (result[index].profit_total != null && result[index].balance == null) {
-                                        result[index].money_use = result[index].profit_total;
-                                    }
-                                    if (result[index].profit_total != null && result[index].balance != null) {
-                                        result[index].money_use = (parseFloat(result[index].profit_total) - parseFloat(result[index].balance)).toFixed(2);
-                                    }
                                     if (result[index].gender == "0") {
                                         result[index].gender = '未知';
                                     }
@@ -202,6 +293,27 @@ router.get('/appAngelInfo', async(ctx, next) => {
                                     }
                                     if (result[index].gender == "2") {
                                         result[index].gender = '女';
+                                    }
+                                    if (result[index].role == 1) {
+                                        result[index].role = '视友';
+                                    }
+                                    if (result[index].role == 2) {
+                                        result[index].role = '亲友';
+                                    }
+                                    if (result[index].role == 4) {
+                                        result[index].role = '志愿者';
+                                    }
+                                    if (result[index].role == 8) {
+                                        result[index].role = '客服';
+                                    }
+                                    if (result[index].auth == 1) {
+                                        result[index].auth = '是志愿者';
+                                    }
+                                    if ((result[index].role == 2 || result[index].role == 4) && result[index].auth == 0) {
+                                        result[index].auth = '非志愿者';
+                                    }
+                                    if (result[index].createdAt) {
+                                        result[index].regtime = moment(result[index].createdAt).add(8, 'h').format('YYYY-MM-DD HH:mm:ss');
                                     }
                                 }
                                 resolve({
@@ -225,73 +337,816 @@ router.get('/appAngelInfo', async(ctx, next) => {
 
             })
         });
-        ctx.response.body = re;
+        if (re.code == 200) {
+            let tmp = re.data.records;
+            for (let i in tmp) {
+                let user_agent = await new Promise((resolve, reject) => {
+                    con.query('select user_agent from call_orders where user_id=? order by createdAt DESC limit 1', [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                let mobile = '';
+                let mobile_version = '';
+                let app_version = '';
+                let glass_version = '';
+                if (user_agent.length > 0) {
+                    user_agent = user_agent[0].user_agent;
+                    let ua = user_agent.split('_');
+                    mobile = ua[3];
+                    mobile_version = ua[3] + '_' + ua[4];
+                    app_version = ua[0] + '_' + ua[1] + '_' + ua[2];
+                }
+                let user_auth_info = await new Promise((resolve, reject) => {
+                    con.query('select user_auth_info from user_auth where user_id=?', [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                let idnum = '';
+                if (user_auth_info && user_auth_info.length > 0) {
+                    user_auth_info = JSON.parse(user_auth_info[0].user_auth_info);
+                    if (user_auth_info.hasOwnProperty('IdentificationNumber')) {
+                        idnum = user_auth_info.IdentificationNumber;
+                    }
+                }
+                let angellist = '';
+                let angelnum = 0;
+                let angel = await new Promise((resolve, reject) => {
+                    con.query('select count(*) as angelnum,group_concat(distinct users.tel) as angellist from `blind2family-through` as bf left join users on users.id=bf.angelId where bf.blindId=?', [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                if (angel.length > 0) {
+                    angelnum = angel[0].angelnum;
+                    angellist = angel[0].angellist
+                }
+                let inviter_tel = await new Promise((resolve, reject) => {
+                    con.query('select inviter_tel from invite_order where invitee_id=?', [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                if (inviter_tel.length > 0) {
+                    inviter_tel = inviter_tel[0].inviter_tel;
+                }
+                let invitee_tel = await new Promise((resolve, reject) => {
+                    con.query('select group_concat(distinct invitee_tel) as invitee_tel from invite_order where inviter_id=?', [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+
+                if (invitee_tel.length > 0) {
+                    invitee_tel = invitee_tel[0].invitee_tel;
+                }
+                let invite_count = await new Promise((resolve, reject) => {
+                    con.query('select count(*) as num from invite_order where inviter_id=?', [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                console.log(invite_count);
+                if (invite_count && invite_count.length > 0) {
+                    invite_count = invite_count[0].num;
+                } else {
+                    invite_count = 0;
+                }
+                //上次登录时间
+                let last_login_time = 0;
+                let lt = await new Promise((resolve, reject) => {
+                    con.query("select createdAt from user_event where user_id=? and event_name='API-login' order by createdAt DESC limit 0,1", [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    })
+                });
+                if (lt && lt.length > 0) {
+                    last_login_time = moment(lt[0].createdAt).add(8, 'h').format('YYYY-MM-DD HH:mm:ss');
+                }
+                //上次退出时间
+                let last_logout_time = 0;
+                let lg = await new Promise((resolve, reject) => {
+                    con.query("select createdAt from user_event where user_id=? and event_name='API-logout' order by createdAt DESC limit 0,1", [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    })
+                });
+                if (lg && lg.length > 0) {
+                    last_login_time = moment(lg[0].createdAt).add(8, 'h').format('YYYY-MM-DD HH:mm:ss');
+                }
+                //连续登录天数
+                let in_out_day = 0;
+                let ins = new Date(last_login_time).getTime();
+                let outs = new Date(last_logout_time).getTime();
+                if (ins > outs) {
+                    in_out_day = (new Date().getTime() - ins) / 86400000;
+                    in_out_day = Math.floor(in_out_day);
+                } else {
+                    in_out_day = (outs - ins) / 86400000;
+                    in_out_day = Math.floor(in_out_day);
+                }
+                //软件登录总时长
+                let total_login_time = 0;
+                let in_out_arr = await new Promise((resolve, reject) => {
+                    con.query("select createdAt,event_name from user_event where user_id=? and (event_name='API-logout' or event_name='API-login') order by createdAt ASC", [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    })
+                });
+                let in_arr = [];
+                let out_arr = [];
+                if (in_out_arr && in_out_arr.length > 0) {
+                    let b = 0;
+                    for (let i = 0; i < in_out_arr.length; i++) {
+                        if (b == 0 && in_out_arr[i].event_name == 'API-login') {
+                            b = 1;
+                            in_arr.push(moment(in_out_arr[i].createdAt).add(8, 'h').format('YYYY-MM-DD HH:mm:ss'));
+                        }
+                        if (b == 1 && in_out_arr[i].event_name == 'API-logout') {
+                            b = 0
+                            out_arr.push(moment(in_out_arr[i].createdAt).add(8, 'h').format('YYYY-MM-DD HH:mm:ss'));
+                        }
+                    }
+                    if (in_arr.length > 0 && out_arr.length == 0) {
+                        console.log(11);
+                        total_login_time = (new Date().getTime()) - (new Date(in_arr[0]).getTime());
+                        console.log(total_login_time);
+                    }
+                    if (in_arr.length > 0 && out_arr.length > 0 && (in_arr.length == out_arr.length)) {
+                        for (let d = 0; d < in_arr.length; d++) {
+                            total_login_time += (new Date(out_arr[d]).getTime()) - (new Date(in_arr[d]).getTime());
+                            console.log(new Date(out_arr[d]).getTime());
+                            console.log(new Date(in_arr[d]).getTime());
+                            console.log(total_login_time);
+                        }
+                    }
+                    if (in_arr.length > 0 && out_arr.length > 0 && (in_arr.length > out_arr.length)) {
+                        let l = 0;
+                        for (let d = 0; d < out_arr.length; d++) {
+                            l = d
+                            total_login_time += (new Date(out_arr[d]).getTime()) - (new Date(in_arr[d]).getTime());
+                        }
+                        total_login_time += (new Date().getTime()) - (new Date(in_arr[l]).getTime());
+                    }
+                }
+                if (total_login_time > 0) {
+                    total_login_time = Math.floor(total_login_time / 1000);
+                    total_login_time = common.sec_to_time(total_login_time);
+                }
+                let balance = await new Promise((resolve, reject) => {
+                    con.query('select paytime_left,freetime_left,money_left,valid_time from blind_account where user_id=?', [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                let paytime_left, freetime_left, money_left, valid_time;
+                if (balance.length > 0) {
+                    paytime_left = balance[0].paytime_left;
+                    freetime_left = balance[0].freetime_left;
+                    money_left = balance[0].money_left;
+                    valid_time = balance[0].valid_time;
+                }
+                let usedTime = await new Promise((resolve, reject) => {
+                    con.query('select sum(duration2) as usedTime from chat_orders where caller_uid=?', [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                if (usedTime.length > 0) {
+                    usedTime = usedTime[0].usedTime;
+                }
+                let usedTimes = await new Promise((resolve, reject) => {
+                    con.query("select count(*) as usedTimes from user_event where user_id=? and event_name='Signal-login'", [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                if (usedTimes.length > 0) {
+                    usedTimes = usedTimes[0].usedTimes;
+                }
+                let anan = '',
+                    voan = '',
+                    csan = '',
+                    totalan = '',
+                    angletime = '',
+                    votime = '',
+                    cstime = '',
+                    totaltime = '';
+                if (tmp[i].role == '视友') {
+                    anan = await new Promise((resolve, reject) => {
+                        con.query("select count(*) as anan from answered_calls as ac left join users as u on u.id=ac.callee_id where caller_id=? and u.role=2", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (anan.length > 0) {
+                        anan = anan[0].anan;
+                    }
+                    voan = await new Promise((resolve, reject) => {
+                        con.query("select count(*) as voan from answered_calls as ac left join users as u on u.id=ac.callee_id where caller_id=? and u.role=4 or (u.role=2 and u.service=1)", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (voan.length > 0) {
+                        voan = voan[0].voan;
+                    }
+                    csan = await new Promise((resolve, reject) => {
+                        con.query("select count(*) as csan from answered_calls as ac left join users as u on u.id=ac.callee_id where caller_id=? and u.role=8", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (csan.length > 0) {
+                        csan = csan[0].csan;
+                    }
+                    totalan = await new Promise((resolve, reject) => {
+                        con.query("select count(*) as totalan from answered_calls where caller_id=?", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (totalan.length > 0) {
+                        totalan = totalan[0].totalan;
+                    }
+                    angletime = await new Promise((resolve, reject) => {
+                        con.query("select sum(duration) as angletime from chat_orders as co left join users as u on u.id=co.callee_uid where co.caller_uid=? and u.role=2", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (angletime.length > 0) {
+                        angletime = angletime[0].angletime;
+                    }
+                    votime = await new Promise((resolve, reject) => {
+                        con.query("select sum(duration) as votime from chat_orders as co left join users as u on u.id=co.callee_uid where co.caller_uid=? and u.role=4 or (u.role=2 and u.service=1)", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (votime.length > 0) {
+                        votime = votime[0].votime;
+                    }
+                    cstime = await new Promise((resolve, reject) => {
+                        con.query("select sum(duration) as cstime from chat_orders as co left join users as u on u.id=co.callee_uid where co.caller_uid=? and u.role=8", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (cstime.length > 0) {
+                        cstime = cstime[0].cstime;
+                    }
+                    totaltime = await new Promise((resolve, reject) => {
+                        con.query("select sum(duration) as totaltime from chat_orders where caller_uid=?", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (totaltime.length > 0) {
+                        totaltime = totaltime[0].totaltime;
+                    }
+                }
+                if (tmp[i].role == '亲友') {
+                    anan = await new Promise((resolve, reject) => {
+                        con.query("select count(*) as anan from answered_calls as ac left join users as u on u.id=ac.callee_id where callee_id=? and u.role=2", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (anan.length > 0) {
+                        anan = anan[0].anan;
+                        totalan = anan;
+                    }
+                    angletime = await new Promise((resolve, reject) => {
+                        con.query("select sum(duration) as angletime from chat_orders as co left join users as u on u.id=co.callee_uid where co.callee_uid=? and u.role=2", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (angletime.length > 0) {
+                        angletime = angletime[0].angletime;
+                    }
+                    totaltime = await new Promise((resolve, reject) => {
+                        con.query("select sum(duration) as totaltime from chat_orders as co left join users as u on u.id=co.callee_uid where callee_uid=? and u.role=2", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (totaltime.length > 0) {
+                        totaltime = totaltime[0].totaltime;
+                    }
+                }
+                if (tmp[i].role == '志愿者') {
+                    voan = await new Promise((resolve, reject) => {
+                        con.query("select count(*) as voan from answered_calls as ac left join users as u on u.id=ac.callee_id where callee_id=? and u.role=4 or (u.role=2 and u.service=1)", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (voan.length > 0) {
+                        voan = voan[0].voan;
+                        totalan = voan;
+                    }
+                    votime = await new Promise((resolve, reject) => {
+                        con.query("select sum(duration) as votime from chat_orders as co left join users as u on u.id=co.callee_uid where co.callee_uid=? and u.role=4 or (u.role=2 and u.service=1)", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (votime.length > 0) {
+                        votime = votime[0].votime;
+                    }
+                    totaltime = await new Promise((resolve, reject) => {
+                        con.query("select sum(duration) as totaltime from chat_orders as co left join users as u on u.id=co.callee_uid where callee_uid=? and u.role=4 or (u.role=2 and u.service=1)", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (totaltime.length > 0) {
+                        totaltime = totaltime[0].totaltime;
+                    }
+
+                }
+                if (tmp[i].role == '客服') {
+                    csan = await new Promise((resolve, reject) => {
+                        con.query("select count(*) as csan from answered_calls as ac left join users as u on u.id=ac.callee_id where callee_id=? and u.role=8", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (csan.length > 0) {
+                        csan = csan[0].csan;
+                        totalan = csan;
+                    }
+                    cstime = await new Promise((resolve, reject) => {
+                        con.query("select sum(duration) as cstime from chat_orders as co left join users as u on u.id=co.callee_uid where co.callee_uid=? and u.role=8", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (cstime.length > 0) {
+                        cstime = cstime[0].cstime;
+                    }
+                    totaltime = await new Promise((resolve, reject) => {
+                        con.query("select sum(duration) as totaltime from chat_orders as co left join users as u on u.id=co.callee_uid where callee_uid=? and u.role=8", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (totaltime.length > 0) {
+                        totaltime = totaltime[0].totaltime;
+                    }
+
+                }
+                tmp[i] = Object.assign(tmp[i], { mobile: mobile, mobile_version: mobile_version, app_version: app_version, glass_version: glass_version, idnum: idnum, angelnum: angelnum, angellist: angellist, invite_count: invite_count, inviter_tel: inviter_tel, invitee_tels: invitee_tel, paytime_left: paytime_left, freetime_left: freetime_left, usedTime: usedTime, valid_time: valid_time, money_left: money_left, usedTimes: usedTimes, anan: anan, voan: voan, csan: csan, totalan: totalan, angletime: angletime, votime: votime, cstime: cstime, totaltime: totaltime, last_login_time: last_login_time, in_out_day: in_out_day, total_login_time: total_login_time })
+            }
+        }
     } else {
-        let re = await new Promise((resolve, reject) => {
-            con.query('select count(id) as angelnum  from users where role=2 and tel=?', [key], function(err, result) {
-                if (err) {
-                    resolve({
-                        code: 10004,
-                        msg: '网络出错',
-                        data: ''
-                    });
-                } else {
-                    if (result[0].angelnum > 0) {
-                        let total = result[0].angelnum;
-                        con.query('select users.*,balance,profit_total,blindnum from users left join angel_account on users.id = angel_account.user_id left join (select count(*) as blindnum,angelId from `blind2family-through` group by angelId) as p on users.id = p.angelId  where users.role=2 and tel=? limit ?,?', [key, (parseInt(page) - 1) * parseInt(pagenum), parseInt(pagenum)], function(err, result) {
-                            if (err) {
-                                resolve({
-                                    code: 10004,
-                                    msg: '网络出错',
-                                    data: ''
-                                });
-                            } else {
-                                for (let index in result) {
-                                    let birthday = moment(result[index].birthday).format('YYYY-MM-DD');
-                                    result[index].age = common.getAge(birthday);
-                                    if (result[index].profit_total == null) {
-                                        result[index].money_use = '0.00';
-                                    }
-                                    if (result[index].profit_total != null && result[index].balance == null) {
-                                        result[index].money_use = result[index].profit_total;
-                                    }
-                                    if (result[index].profit_total != null && result[index].balance != null) {
-                                        result[index].money_use = (parseFloat(result[index].profit_total) - parseFloat(result[index].balance)).toFixed(2);
-                                    }
-                                    if (result[index].gender == "0") {
-                                        result[index].gender = '未知';
-                                    }
-                                    if (result[index].gender == "1") {
-                                        result[index].gender = '男';
-                                    }
-                                    if (result[index].gender == "2") {
-                                        result[index].gender = '女';
-                                    }
-                                }
-                                resolve({
-                                    code: 200,
-                                    msg: '操作成功',
-                                    data: {
-                                        records: result,
-                                        total: total
-                                    }
-                                });
-                            }
+        re = await new Promise((resolve, reject) => {
+                con.query('select * from users where tel=?', [key], function(err, result) {
+                    if (err) {
+                        resolve({
+                            code: 10004,
+                            msg: '网络出错',
+                            data: ''
                         });
                     } else {
+                        for (let index in result) {
+                            let birthday = moment(result[index].birthday).format('YYYY-MM-DD');
+                            result[index].age = common.getAge(birthday);
+                            if (result[index].gender == "0") {
+                                result[index].gender = '未知';
+                            }
+                            if (result[index].gender == "1") {
+                                result[index].gender = '男';
+                            }
+                            if (result[index].gender == "2") {
+                                result[index].gender = '女';
+                            }
+                            if (result[index].role == 1) {
+                                result[index].role = '视友';
+                            }
+                            if (result[index].role == 2) {
+                                result[index].role = '亲友';
+                            }
+                            if (result[index].role == 4) {
+                                result[index].role = '志愿者';
+                            }
+                            if (result[index].role == 8) {
+                                result[index].role = '客服';
+                            }
+                            if (result[index].auth == 1) {
+                                result[index].auth = '是志愿者';
+                            }
+                            if ((result[index].role == 2 || result[index].role == 4) && result[index].auth == 0) {
+                                result[index].auth = '非志愿者';
+                            }
+                            if (result[index].createdAt) {
+                                result[index].regtime = moment(result[index].createdAt).add(8, 'h').format('YYYY-MM-DD HH:mm:ss');
+                            }
+                        }
                         resolve({
-                            code: 10006,
-                            msg: '暂无数据',
-                            data: ''
-                        })
+                            code: 200,
+                            msg: '操作成功',
+                            data: {
+                                records: result,
+                                total: 1
+                            }
+                        });
+                    }
+                });
+                  
+        });
+        if (re.code == 200) {
+            let tmp = re.data.records;
+            for (let i in tmp) {
+                let user_agent = await new Promise((resolve, reject) => {
+                    con.query('select user_agent from call_orders where user_id=? order by createdAt DESC limit 1', [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                let mobile = '';
+                let mobile_version = '';
+                let app_version = '';
+                let glass_version = '';
+                if (user_agent.length > 0) {
+                    user_agent = user_agent[0].user_agent;
+                    let ua = user_agent.split('_');
+                    mobile = ua[3];
+                    mobile_version = ua[3] + '_' + ua[4];
+                    app_version = ua[0] + '_' + ua[1] + '_' + ua[2];
+                }
+                let user_auth_info = await new Promise((resolve, reject) => {
+                    con.query('select user_auth_info from user_auth where user_id=?', [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                let idnum = '';
+                if (user_auth_info && user_auth_info.length > 0) {
+                    user_auth_info = JSON.parse(user_auth_info[0].user_auth_info);
+                    if (user_auth_info.hasOwnProperty('IdentificationNumber')) {
+                        idnum = user_auth_info.IdentificationNumber;
                     }
                 }
+                let angellist = '';
+                let angelnum = 0;
+                let angel = await new Promise((resolve, reject) => {
+                    con.query('select count(*) as angelnum,group_concat(distinct users.tel) as angellist from `blind2family-through` as bf left join users on users.id=bf.angelId where bf.blindId=?', [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                if (angel.length > 0) {
+                    angelnum = angel[0].angelnum;
+                    angellist = angel[0].angellist
+                }
+                let inviter_tel = await new Promise((resolve, reject) => {
+                    con.query('select inviter_tel from invite_order where invitee_id=?', [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                if (inviter_tel.length > 0) {
+                    inviter_tel = inviter_tel[0].inviter_tel;
+                }
+                let invitee_tel = await new Promise((resolve, reject) => {
+                    con.query('select group_concat(distinct invitee_tel) as invitee_tel from invite_order where inviter_id=?', [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
 
-            })
-        });
+                if (invitee_tel.length > 0) {
+                    invitee_tel = invitee_tel[0].invitee_tel;
+                }
+                let invite_count = await new Promise((resolve, reject) => {
+                    con.query('select count(*) as num from invite_order where inviter_id=?', [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                console.log(invite_count);
+                if (invite_count && invite_count.length > 0) {
+                    invite_count = invite_count[0].num;
+                } else {
+                    invite_count = 0;
+                }
+                //上次登录时间
+                let last_login_time = 0;
+                let lt = await new Promise((resolve, reject) => {
+                    con.query("select createdAt from user_event where user_id=? and event_name='API-login' order by createdAt DESC limit 0,1", [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    })
+                });
+                if (lt && lt.length > 0) {
+                    last_login_time = moment(lt[0].createdAt).add(8, 'h').format('YYYY-MM-DD HH:mm:ss');
+                }
+                //上次退出时间
+                let last_logout_time = 0;
+                let lg = await new Promise((resolve, reject) => {
+                    con.query("select createdAt from user_event where user_id=? and event_name='API-logout' order by createdAt DESC limit 0,1", [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    })
+                });
+                if (lg && lg.length > 0) {
+                    last_login_time = moment(lg[0].createdAt).add(8, 'h').format('YYYY-MM-DD HH:mm:ss');
+                }
+                //连续登录天数
+                let in_out_day = 0;
+                let ins = new Date(last_login_time).getTime();
+                let outs = new Date(last_logout_time).getTime();
+                if (ins > outs) {
+                    in_out_day = (new Date().getTime() - ins) / 86400000;
+                    in_out_day = Math.floor(in_out_day);
+                } else {
+                    in_out_day = (outs - ins) / 86400000;
+                    in_out_day = Math.floor(in_out_day);
+                }
+                //软件登录总时长
+                let total_login_time = 0;
+                let in_out_arr = await new Promise((resolve, reject) => {
+                    con.query("select createdAt,event_name from user_event where user_id=? and (event_name='API-logout' or event_name='API-login') order by createdAt ASC", [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    })
+                });
+                let in_arr = [];
+                let out_arr = [];
+                if (in_out_arr && in_out_arr.length > 0) {
+                    let b = 0;
+                    for (let i = 0; i < in_out_arr.length; i++) {
+                        if (b == 0 && in_out_arr[i].event_name == 'API-login') {
+                            b = 1;
+                            in_arr.push(moment(in_out_arr[i].createdAt).add(8, 'h').format('YYYY-MM-DD HH:mm:ss'));
+                        }
+                        if (b == 1 && in_out_arr[i].event_name == 'API-logout') {
+                            b = 0
+                            out_arr.push(moment(in_out_arr[i].createdAt).add(8, 'h').format('YYYY-MM-DD HH:mm:ss'));
+                        }
+                    }
+                    if (in_arr.length > 0 && out_arr.length == 0) {
+                        console.log(11);
+                        total_login_time = (new Date().getTime()) - (new Date(in_arr[0]).getTime());
+                        console.log(total_login_time);
+                    }
+                    if (in_arr.length > 0 && out_arr.length > 0 && (in_arr.length == out_arr.length)) {
+                        for (let d = 0; d < in_arr.length; d++) {
+                            total_login_time += (new Date(out_arr[d]).getTime()) - (new Date(in_arr[d]).getTime());
+                            console.log(new Date(out_arr[d]).getTime());
+                            console.log(new Date(in_arr[d]).getTime());
+                            console.log(total_login_time);
+                        }
+                    }
+                    if (in_arr.length > 0 && out_arr.length > 0 && (in_arr.length > out_arr.length)) {
+                        let l = 0;
+                        for (let d = 0; d < out_arr.length; d++) {
+                            l = d
+                            total_login_time += (new Date(out_arr[d]).getTime()) - (new Date(in_arr[d]).getTime());
+                        }
+                        total_login_time += (new Date().getTime()) - (new Date(in_arr[l]).getTime());
+                    }
+                }
+                if (total_login_time > 0) {
+                    total_login_time = Math.floor(total_login_time / 1000);
+                    total_login_time = common.sec_to_time(total_login_time);
+                }
+                let balance = await new Promise((resolve, reject) => {
+                    con.query('select paytime_left,freetime_left,money_left,valid_time from blind_account where user_id=?', [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                let paytime_left, freetime_left, money_left, valid_time;
+                if (balance.length > 0) {
+                    paytime_left = balance[0].paytime_left;
+                    freetime_left = balance[0].freetime_left;
+                    money_left = balance[0].money_left;
+                    valid_time = balance[0].valid_time;
+                }
+                let usedTime = await new Promise((resolve, reject) => {
+                    con.query('select sum(duration2) as usedTime from chat_orders where caller_uid=?', [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                if (usedTime.length > 0) {
+                    usedTime = usedTime[0].usedTime;
+                }
+                let usedTimes = await new Promise((resolve, reject) => {
+                    con.query("select count(*) as usedTimes from user_event where user_id=? and event_name='Signal-login'", [tmp[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                if (usedTimes.length > 0) {
+                    usedTimes = usedTimes[0].usedTimes;
+                }
+                let anan = '',
+                    voan = '',
+                    csan = '',
+                    totalan = '',
+                    angletime = '',
+                    votime = '',
+                    cstime = '',
+                    totaltime = '';
+                if (tmp[i].role == '视友') {
+                    anan = await new Promise((resolve, reject) => {
+                        con.query("select count(*) as anan from answered_calls as ac left join users as u on u.id=ac.callee_id where caller_id=? and u.role=2", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (anan.length > 0) {
+                        anan = anan[0].anan;
+                    }
+                    voan = await new Promise((resolve, reject) => {
+                        con.query("select count(*) as voan from answered_calls as ac left join users as u on u.id=ac.callee_id where caller_id=? and u.role=4 or (u.role=2 and u.service=1)", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (voan.length > 0) {
+                        voan = voan[0].voan;
+                    }
+                    csan = await new Promise((resolve, reject) => {
+                        con.query("select count(*) as csan from answered_calls as ac left join users as u on u.id=ac.callee_id where caller_id=? and u.role=8", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (csan.length > 0) {
+                        csan = csan[0].csan;
+                    }
+                    totalan = await new Promise((resolve, reject) => {
+                        con.query("select count(*) as totalan from answered_calls where caller_id=?", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (totalan.length > 0) {
+                        totalan = totalan[0].totalan;
+                    }
+                    angletime = await new Promise((resolve, reject) => {
+                        con.query("select sum(duration) as angletime from chat_orders as co left join users as u on u.id=co.callee_uid where co.caller_uid=? and u.role=2", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (angletime.length > 0) {
+                        angletime = angletime[0].angletime;
+                    }
+                    votime = await new Promise((resolve, reject) => {
+                        con.query("select sum(duration) as votime from chat_orders as co left join users as u on u.id=co.callee_uid where co.caller_uid=? and u.role=4 or (u.role=2 and u.service=1)", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (votime.length > 0) {
+                        votime = votime[0].votime;
+                    }
+                    cstime = await new Promise((resolve, reject) => {
+                        con.query("select sum(duration) as cstime from chat_orders as co left join users as u on u.id=co.callee_uid where co.caller_uid=? and u.role=8", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (cstime.length > 0) {
+                        cstime = cstime[0].cstime;
+                    }
+                    totaltime = await new Promise((resolve, reject) => {
+                        con.query("select sum(duration) as totaltime from chat_orders where caller_uid=?", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (totaltime.length > 0) {
+                        totaltime = totaltime[0].totaltime;
+                    }
+                }
+                if (tmp[i].role == '亲友') {
+                    anan = await new Promise((resolve, reject) => {
+                        con.query("select count(*) as anan from answered_calls as ac left join users as u on u.id=ac.callee_id where callee_id=? and u.role=2", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (anan.length > 0) {
+                        anan = anan[0].anan;
+                        totalan = anan;
+                    }
+                    angletime = await new Promise((resolve, reject) => {
+                        con.query("select sum(duration) as angletime from chat_orders as co left join users as u on u.id=co.callee_uid where co.callee_uid=? and u.role=2", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (angletime.length > 0) {
+                        angletime = angletime[0].angletime;
+                    }
+                    totaltime = await new Promise((resolve, reject) => {
+                        con.query("select sum(duration) as totaltime from chat_orders as co left join users as u on u.id=co.callee_uid where callee_uid=? and u.role=2", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (totaltime.length > 0) {
+                        totaltime = totaltime[0].totaltime;
+                    }
+                }
+                if (tmp[i].role == '志愿者') {
+                    voan = await new Promise((resolve, reject) => {
+                        con.query("select count(*) as voan from answered_calls as ac left join users as u on u.id=ac.callee_id where callee_id=? and u.role=4 or (u.role=2 and u.service=1)", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (voan.length > 0) {
+                        voan = voan[0].voan;
+                        totalan = voan;
+                    }
+                    votime = await new Promise((resolve, reject) => {
+                        con.query("select sum(duration) as votime from chat_orders as co left join users as u on u.id=co.callee_uid where co.callee_uid=? and u.role=4 or (u.role=2 and u.service=1)", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (votime.length > 0) {
+                        votime = votime[0].votime;
+                    }
+                    totaltime = await new Promise((resolve, reject) => {
+                        con.query("select sum(duration) as totaltime from chat_orders as co left join users as u on u.id=co.callee_uid where callee_uid=? and u.role=4 or (u.role=2 and u.service=1)", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (totaltime.length > 0) {
+                        totaltime = totaltime[0].totaltime;
+                    }
+
+                }
+                if (tmp[i].role == '客服') {
+                    csan = await new Promise((resolve, reject) => {
+                        con.query("select count(*) as csan from answered_calls as ac left join users as u on u.id=ac.callee_id where callee_id=? and u.role=8", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (csan.length > 0) {
+                        csan = csan[0].csan;
+                        totalan = csan;
+                    }
+                    cstime = await new Promise((resolve, reject) => {
+                        con.query("select sum(duration) as cstime from chat_orders as co left join users as u on u.id=co.callee_uid where co.callee_uid=? and u.role=8", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (cstime.length > 0) {
+                        cstime = cstime[0].cstime;
+                    }
+                    totaltime = await new Promise((resolve, reject) => {
+                        con.query("select sum(duration) as totaltime from chat_orders as co left join users as u on u.id=co.callee_uid where callee_uid=? and u.role=8", [tmp[i].id], function(err, r) {
+                            if (err) reject(err);
+                            resolve(r);
+                        });
+                    });
+                    if (totaltime.length > 0) {
+                        totaltime = totaltime[0].totaltime;
+                    }
+
+                }
+                tmp[i] = Object.assign(tmp[i], { mobile: mobile, mobile_version: mobile_version, app_version: app_version, glass_version: glass_version, idnum: idnum, angelnum: angelnum, angellist: angellist, invite_count: invite_count, inviter_tel: inviter_tel, invitee_tels: invitee_tel, paytime_left: paytime_left, freetime_left: freetime_left, usedTime: usedTime, valid_time: valid_time, money_left: money_left, usedTimes: usedTimes, anan: anan, voan: voan, csan: csan, totalan: totalan, angletime: angletime, votime: votime, cstime: cstime, totaltime: totaltime, last_login_time: last_login_time, in_out_day: in_out_day, total_login_time: total_login_time })
+            }
+        }
+    }
+    if (type == 2) {
+        let temp = re.data.records;
+        let datas = [
+            ['用户ID', '头像', '角色', '姓名', '注册手机号', '注册时间', '城市', '生日', '性别', '视力状况', '手机型号', '手机系统版本', '软件版本号', '硬件版本号', '身份证号', '是否成为志愿者', '绑定亲友数', '关联亲友列表', '总邀请数', '邀请人', '受邀请人', '账户本金余额', '账户赠金余额', '累计使用时长', '当前积分', '消费积分', '评价', '普通充值余额的有效时间', '可退金额', '软件打开次数', '亲友接听次数', '志愿者接听次数', '客服接听次数', '总接听次数', '亲友通话时长', '志愿者通话时长', '客服通话时长', '总通话时长', '最近登录时间', '连续登录天数', '软件登录总时长']
+        ];
+        for (let index in temp) {
+            let data = [temp[index].id, temp[index].avatar, temp[index].role, temp[index].name, temp[index].tel, temp[index].regtime, temp[index].address, temp[index].birthday, temp[index].gender, temp[index].eyesight, temp[index].mobile, temp[index].mobile_version, temp[index].app_version, temp[index].glass_version, temp[index].idnum, temp[index].auth, temp[index].angelnum, temp[index].angellist, temp[index].invite_count, temp[index].inviter_tel, temp[index].invitee_tels, temp[index].paytime_left, temp[index].freetime_left, temp[index].usedTime, '', '', '', temp[index].valid_time, temp[index].money_left, temp[index].usedTimes, temp[index].anan, temp[index].voan, temp[index].csan, temp[index].totalan, temp[index].angletime, temp[index].votime, temp[index].cstime, temp[index].totaltime, temp[index].last_login_time, temp[index].in_out_day, temp[index].total_login_time];
+            datas.push(data);
+        }
+        let buffer = xlsx.build([{
+            name: 'sheet1',
+            data: datas
+        }]);
+
+        fs.writeFileSync('public/uploads/appUserInfo' + dd + '.xlsx', buffer, { 'flag': 'w' }); //生成excel
+        ctx.response.body = {
+            code: 200,
+            msg: '操作成功',
+            data: 'uploads/appUserInfo' + dd + '.xlsx'
+        };
+    } else {
         ctx.response.body = re;
     }
-
 });
 
 /**
@@ -710,30 +1565,71 @@ router.get('/appBlindInfoExcel', async(ctx, next) => {
                         if (result[index].gender == "2") {
                             result[index].gender = '女';
                         }
+                        if (result[index].createdAt) {
+                            result[index].createdAt = moment(result[index].createdAt).add(8, 'h').format('YYYY-MM-DD HH:mm:ss');
+                        }
                     }
-                    let datas = [
-                        ['用户id', '视友姓名', '城市', '年龄', '性别', '电话', '视力状况', '绑定亲友数', '账户余额', '使用额', '充值额']
-                    ];
-                    for (let index in result) {
-                        let data = [result[index].id, result[index].name, result[index].address, result[index].age, result[index].gender, result[index].tel, result[index].eyesight, result[index].angelnum, result[index].money_left, result[index].money_use, result[index].totalmoney];
-                        datas.push(data);
-                    }
-
-                    let buffer = xlsx.build([{
-                        name: 'sheet1',
-                        data: datas
-                    }]);
-
-                    fs.writeFileSync('public/uploads/userBlindInfo' + dd + '.xlsx', buffer, { 'flag': 'w' }); //生成excel
-                    resolve({
-                        code: 200,
-                        msg: '操作成功',
-                        data: 'uploads/userBlindInfo' + dd + '.xlsx'
-                    });
+                    resolve(result);
                 }
             });
         });
-        ctx.response.body = re;
+        if (re && re.length > 0) {
+            for (let i in re) {
+                //最后使用时间
+                let lastUseTime2 = await new Promise((resolve, reject) => {
+                    con.query('select createdAt as lastUseTime from signal_order where caller_uid=? order by createdAt DESC limit 1', [re[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                //总使用次数
+                let totalTimes2 = await new Promise(function(resolve, reject) {
+                    con.query('select count(*) as totalTimes from signal_order where caller_uid=?', [re[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                //总使用时长
+                let totalTime2 = await new Promise(function(resolve, reject) {
+                    con.query('select sum(duration2) as totalTime from chat_orders where caller_uid=?', [re[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                let lut = '';
+                let tts = 0;
+                let tt = 0;
+                if (lastUseTime2 && 　lastUseTime2.length > 0) {
+                    lut = moment(lastUseTime2[0].lastUseTime).add(8, 'h').format('YYYY-MM-DD HH:mm:ss');
+                }
+                if (totalTimes2 && totalTimes2.length > 0) {
+                    tts = totalTimes2[0].totalTimes;
+                }
+                if (totalTime2 && totalTime2.length > 0) {
+                    tt = common.sec_to_time(totalTime2[0].totalTime);
+                }
+                let temp = { lastUseTime: lut, totalTimes: tts, totalTime: tt };
+                re[i] = Object.assign(re[i], temp);
+            }
+            let datas = [
+                ['用户id', '视友姓名', '城市', '注册时间', '最后使用时间', '总使用次数', '总使用时长', '年龄', '性别', '电话', '视力状况', '绑定亲友数', '账户余额', '使用额', '充值额']
+            ];
+            for (let index in re) {
+                let data = [re[index].id, re[index].name, re[index].address, re[index].createdAt, re[index].lastUseTime, re[index].totalTimes, re[index].totalTime,re[index].age, re[index].gender, re[index].tel, re[index].eyesight, re[index].angelnum, re[index].money_left, re[index].money_use, re[index].totalmoney];
+                datas.push(data);
+            }
+            let buffer = xlsx.build([{
+                name: 'sheet1',
+                data: datas
+            }]);
+            fs.writeFileSync('public/uploads/userBlindInfo' + dd + '.xlsx', buffer, { 'flag': 'w' }); //生成excel
+        }
+        let tmp = {
+            code: 200,
+            msg: '操作成功',
+            data: 'uploads/userBlindInfo' + dd + '.xlsx'
+        };
+        ctx.response.body = tmp;
     } else {
         let re = await new Promise((resolve, reject) => {
             con.query('select users.*,angelnum,money_left,totalmoney from users left join blind_account on users.id = blind_account.user_id left join (select count(*) as angelnum,blindId from `blind2family-through` group by blindId) as t on users.id = t.blindId left join (select sum(pay_money) as totalmoney,receiver_id from charge_order group by `receiver_id`) as p on users.id = p.receiver_id where users.role=1 and tel=?', [key], function(err, result) {
@@ -765,35 +1661,71 @@ router.get('/appBlindInfoExcel', async(ctx, next) => {
                         if (result[index].gender == "2") {
                             result[index].gender = '女';
                         }
+                        if (result[index].createdAt) {
+                            result[index].createdAt = moment(result[index].createdAt).add(8, 'h').format('YYYY-MM-DD HH:mm:ss');
+                        }
                     }
-                    let datas = [
-                        ['用户id', '视友姓名', '城市', '年龄', '性别', '电话', '视力状况', '绑定亲友数', '账户余额', '使用额', '充值额']
-                    ];
-                    for (let index in result) {
-                        let data = [result[index].id, result[index].name, result[index].address, result[index].age, result[index].gender, result[index].tel, result[index].eyesight, result[index].angelnum, result[index].money_left, result[index].money_use, result[index].totalmoney];
-                        datas.push(data);
-                    }
-
-                    let buffer = xlsx.build([{
-                        name: 'sheet1',
-                        data: datas
-                    }]);
-
-                    fs.writeFileSync('public/uploads/userBlindInfo' + dd + '.xlsx', buffer, { 'flag': 'w' }); //生成excel
-                    resolve({
-                        code: 200,
-                        msg: '操作成功',
-                        data: 'uploads/userBlindInfo' + dd + '.xlsx'
-                    });
                 }
             });
-
-
         });
-        ctx.response.body = re;
+        if (re && re.length > 0) {
+            for (let i in re) {
+                //最后使用时间
+                let lastUseTime2 = await new Promise((resolve, reject) => {
+                    con.query('select createdAt as lastUseTime from signal_order where caller_uid=? order by createdAt DESC limit 1', [re[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                //总使用次数
+                let totalTimes2 = await new Promise(function(resolve, reject) {
+                    con.query('select count(*) as totalTimes from signal_order where caller_uid=?', [re[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                //总使用时长
+                let totalTime2 = await new Promise(function(resolve, reject) {
+                    con.query('select sum(duration2) as totalTime from chat_orders where caller_uid=?', [re[i].id], function(err, r) {
+                        if (err) reject(err);
+                        resolve(r);
+                    });
+                });
+                let lut = '';
+                let tts = 0;
+                let tt = 0;
+                if (lastUseTime2 && 　lastUseTime2.length > 0) {
+                    lut = moment(lastUseTime2[0].lastUseTime).add(8, 'h').format('YYYY-MM-DD HH:mm:ss');
+                }
+                if (totalTimes2 && totalTimes2.length > 0) {
+                    tts = totalTimes2[0].totalTimes;
+                }
+                if (totalTime2 && totalTime2.length > 0) {
+                    tt = common.sec_to_time(totalTime2[0].totalTime);
+                }
+                let temp = { lastUseTime: lut, totalTimes: tts, totalTime: tt };
+                re[i] = Object.assign(re[i], temp);
+            }
+            let datas = [
+                ['用户id', '视友姓名', '城市', '注册时间', '最后使用时间', '总使用次数', '总使用时长', '年龄', '性别', '电话', '视力状况', '绑定亲友数', '账户余额', '使用额', '充值额']
+            ];
+            for (let index in re) {
+                let data = [re[index].id, re[index].name, re[index].address, re[index].createdAt, re[index].lastUseTime, re[index].totalTimes, re[index].totalTime, re[index].createdAt, re[index].age, re[index].gender, re[index].tel, re[index].eyesight, re[index].angelnum, re[index].money_left, re[index].money_use, re[index].totalmoney];
+                datas.push(data);
+            }
+            let buffer = xlsx.build([{
+                name: 'sheet1',
+                data: datas
+            }]);
+            fs.writeFileSync('public/uploads/userBlindInfo' + dd + '.xlsx', buffer, { 'flag': 'w' }); //生成excel
+        }
+        let tmp = {
+            code: 200,
+            msg: '操作成功',
+            data: 'uploads/userBlindInfo' + dd + '.xlsx'
+        };
+        ctx.response.body = tmp;
     }
-
-
 });
 router.get('/appAngelInfoExcel', async(ctx, next) => {
     let page = ctx.query.pageNo;
@@ -832,12 +1764,15 @@ router.get('/appAngelInfoExcel', async(ctx, next) => {
                         if (result[index].gender == "2") {
                             result[index].gender = '女';
                         }
+                        if (result[index].createdAt) {
+                            result[index].createdAt = moment(result[index].createdAt).format('YYYY-MM-DD HH:mm:ss');
+                        }
                     }
                     let datas = [
-                        ['用户id', '亲友姓名', '城市', '年龄', '性别', '电话', '视力状况', '绑定视友数', '账户余额', '使用额']
+                        ['用户id', '亲友姓名', '城市', '注册时间', '年龄', '性别', '电话', '视力状况', '绑定视友数', '账户余额', '使用额']
                     ];
                     for (let index in result) {
-                        let data = [result[index].id, result[index].name, result[index].address, result[index].age, result[index].gender, result[index].tel, result[index].eyesight, result[index].blindnum, result[index].balance, result[index].money_use];
+                        let data = [result[index].id, result[index].name, result[index].address, result[index].createdAt, result[index].age, result[index].gender, result[index].tel, result[index].eyesight, result[index].blindnum, result[index].balance, result[index].money_use];
                         datas.push(data);
                     }
 
@@ -888,12 +1823,15 @@ router.get('/appAngelInfoExcel', async(ctx, next) => {
                         if (result[index].gender == "2") {
                             result[index].gender = '女';
                         }
+                        if (result[index].createdAt) {
+                            result[index].createdAt = moment(result[index].createdAt).format('YYYY-MM-DD HH:mm:ss');
+                        }
                     }
                     let datas = [
-                        ['用户id', '亲友姓名', '城市', '年龄', '性别', '电话', '视力状况', '绑定视友数', '账户余额', '使用额']
+                        ['用户id', '亲友姓名', '城市', '注册时间', '年龄', '性别', '电话', '视力状况', '绑定视友数', '账户余额', '使用额']
                     ];
                     for (let index in result) {
-                        let data = [result[index].id, result[index].name, result[index].address, result[index].age, result[index].gender, result[index].tel, result[index].eyesight, result[index].blindnum, result[index].balance, result[index].money_use];
+                        let data = [result[index].id, result[index].name, result[index].address, result[index].createdAt, result[index].age, result[index].gender, result[index].tel, result[index].eyesight, result[index].blindnum, result[index].balance, result[index].money_use];
                         datas.push(data);
                     }
 
@@ -1280,9 +2218,10 @@ router.get('/getCallDetail', async(ctx, next) => {
         test = [0];
     }
     if (tel == '' || typeof(tel) == 'undefined') {
+        let t1 = Date.now();
         //全部成功
         let re1 = await new Promise((resolve, reject) => {
-            con.query("SELECT us.id, us.tel, us.name, us.gender, us.address, us.eyesight, ch.ua, co.user_agent,co.hangup_time, co.chat_id, co.hangup_reason, co.call_time,co.callee_tel,co.wifi_type,co.wifi_name, ac.answer_time, ch.start_time, ch.end_time, ch.duration, ch.flowa, ch.flowb FROM re_prod.users AS us,re_prod.answered_calls as ac, re_prod.chat_orders AS ch left join call_orders as co on ch.chat_id=co.chat_id and co.user_id=co.caller_id WHERE ch.caller_uid=us.id and ac.chat_id=ch.chat_id AND ch.first_audioa > 0 AND ch.first_audiob > 0 AND ch.first_videob > 0 AND us.test in (?) and date_add(co.createdAt, interval '08:00:00' hour_second)>? AND date_add(co.createdAt, interval '08:00:00' hour_second)<? ORDER BY co.id DESC", [test, key1, key2], function(err, result) {
+            con.query("SELECT us.id, us.tel, us.name, us.gender, us.address, us.eyesight, ch.ua, co.user_agent,so.hangup_time,so.call_type,so.call_app,ch.chat_id, co.hangup_reason, so.call_time,so.callee_tel,co.wifi_type,co.wifi_name, ac.answer_time, ch.start_time, ch.end_time, ch.duration, ch.flowa, ch.flowb,cod.caller_setting as settings,cod.changed,cod.changed2,cod.paytime_new,cod.freetime_new,cod.freetime_new2,cod.dispatchList,cod.dispatchArriveList,cod.calleeTelOnline,cod.calleeTelOffline FROM re_prod.users AS us,re_prod.answered_calls as ac,re_prod.signal_order as so,re_prod.chat_orders AS ch left join call_orders as co on ch.chat_id=co.chat_id and co.user_id=co.caller_id left join call_order_detail as cod on ch.chat_id=cod.chat_id WHERE ch.caller_uid=us.id and ac.chat_id=ch.chat_id and ch.chat_id=so.chat_id AND ch.first_audioa > 0 AND ch.first_audiob > 0 AND ch.first_videob > 0 AND us.test in (?) and date_add(ch.createdAt, interval '08:00:00' hour_second)>=? AND date_add(ch.createdAt, interval '08:00:00' hour_second)<? ORDER BY ch.createdAt DESC", [test, key1, key2], function(err, result) {
                 if (err) {
                     resolve({
                         code: 10004,
@@ -1294,7 +2233,6 @@ router.get('/getCallDetail', async(ctx, next) => {
                         result
                     })
                 }
-
             });
         });
         let r1 = re1.result;
@@ -1307,6 +2245,7 @@ router.get('/getCallDetail', async(ctx, next) => {
             r1[index].ba_status = "正常";
             r1[index].bv_status = "正常";
             r1[index].answer_call_time = common.sec_to_time(Math.round((r1[index].answer_time - r1[index].call_time) / 1000));
+            r1[index].ct = r1[index].call_time;
             r1[index].call_time = moment(r1[index].call_time).format('YYYY-MM-DD HH:mm:ss');
             r1[index].answer_time = moment(r1[index].answer_time).format('YYYY-MM-DD HH:mm:ss');
             r1[index].start_time = moment(r1[index].start_time * 1000).format('YYYY-MM-DD HH:mm:ss');
@@ -1316,15 +2255,46 @@ router.get('/getCallDetail', async(ctx, next) => {
             r1[index].flowa = (r1[index].flowa / 1024).toFixed(2);
             r1[index].flowb = (r1[index].flowb / 1024).toFixed(2);
             if (r1[index].wifi_type == 1 || r1[index].wifi_type == '1') {
-                r1[index].wifi_type = '热点';
+                r1[index].wifi_type = '手机4G';
             }
             if (r1[index].wifi_type == 0 || r1[index].wifi_type == '0') {
                 r1[index].wifi_type = 'wifi';
             }
+            if (r1[index].hasOwnProperty('call_app') && r1[index].call_app != undefined ) {
+                if (r1[index].call_app == 2) {
+                    r1[index].call_app = '视友app';
+                } else if (r1[index].call_app == 8) {
+                    r1[index].call_app = '做你的眼睛app'
+                } else {
+                    r1[index].call_app = '云瞳设备';
+                }
+            }
+            if ( r1[index].hasOwnProperty('call_app') && r1[index].call_type != undefined ) {
+                if (r1[index].call_type == 0) {
+                    r1[index].call_type = '全部';
+                }
+                if (r1[index].call_type == 1) {
+                    r1[index].call_type = '亲友';
+                }
+                if (r1[index].call_type == 2) {
+                    r1[index].call_type = '志愿者';
+                }
+                if (r1[index].call_type == 3) {
+                    r1[index].call_type = '客服';
+                }
+            }
+            if ( r1[index].hasOwnProperty('user_agent') && r1[index].user_agent != undefined ) {
+                let userAgent = r1[index].user_agent;
+                if (userAgent != null) {
+                    userAgent = userAgent.split('_');
+                    r1[index].mobile = userAgent[3];
+                    r1[index].mobile_version = userAgent[4];
+                }
+            }
         }
         //呼叫失败
         let re2 = await new Promise((resolve, reject) => {
-            con.query("SELECT us.id, us.tel, us.name, us.gender, us.address, us.eyesight, co.user_agent, co.chat_id, co.hangup_reason, co.call_time, co.answer_time, co.hangup_time,co.callee_tel,co.wifi_type,co.wifi_name FROM re_prod.users AS us, re_prod.call_orders AS co WHERE co.user_id=co.caller_id AND co.user_id = us.id AND co.chat_id NOT IN (SELECT chat_id FROM re_prod.signal_order WHERE chat_id=co.chat_id) AND us.test in (?) AND date_add(co.createdAt, interval '08:00:00' hour_second)>? AND date_add(co.createdAt, interval '08:00:00' hour_second)<? ORDER BY co.id DESC", [test, key1, key2], function(err, result) {
+            con.query("SELECT us.id, us.tel, us.name, us.gender, us.address, us.eyesight, co.user_agent, co.chat_id, co.hangup_reason, co.call_time, co.answer_time, co.hangup_time,co.callee_tel,co.wifi_type,co.wifi_name FROM re_prod.users AS us, re_prod.call_orders AS co WHERE co.user_id=co.caller_id AND co.user_id = us.id AND co.chat_id NOT IN (SELECT chat_id FROM re_prod.signal_order WHERE chat_id=co.chat_id) AND us.test in (?) AND date_add(co.createdAt, interval '08:00:00' hour_second)>=? AND date_add(co.createdAt, interval '08:00:00' hour_second)<? ORDER BY co.id DESC", [test, key1, key2], function(err, result) {
                 if (err) {
                     resolve({
                         code: 10004,
@@ -1350,19 +2320,29 @@ router.get('/getCallDetail', async(ctx, next) => {
             r2[index].bv_status = "异常";
             r2[index].call_fail_reason = r2[index].hangup_reason;
             r2[index].hangup_reason = '';
+            r2[index].ct = r2[index].call_time;
             r2[index].call_time = moment(r2[index].call_time).format('YYYY-MM-DD HH:mm:ss');
             // r2[index].answer_time = moment(r2[index].answer_time * 1000).format('YYYY-MM-DD HH:mm:ss');
             r2[index].hangup_time = moment(r2[index].hangup_time).format('YYYY-MM-DD HH:mm:ss');
             if (r2[index].wifi_type == 1 || r2[index].wifi_type == '1') {
-                r2[index].wifi_type = '热点';
+                r2[index].wifi_type = '手机4G';
             }
             if (r2[index].wifi_type == 0 || r2[index].wifi_type == '0') {
                 r2[index].wifi_type = 'wifi';
             }
+            
+            if ( r2[index].hasOwnProperty('user_agent') && r2[index].user_agent != undefined ) {
+                let userAgent = r2[index].user_agent;
+                if (userAgent != null) {
+                    userAgent = userAgent.split('_');
+                    r2[index].mobile = userAgent[3];
+                    r2[index].mobile_version = userAgent[4];
+                }
+            }
         }
         //接听失败
         let re3 = await new Promise((resolve, reject) => {
-            con.query("SELECT us.id, us.tel, us.name, us.gender, us.address, us.eyesight, co.user_agent, co.chat_id, co.hangup_reason, co.call_time, co.answer_time, co.hangup_time,co.callee_tel,co.wifi_type,co.wifi_name FROM re_prod.users AS us, re_prod.signal_order AS so left join call_orders as co on so.chat_id=co.chat_id and co.user_id=co.caller_id WHERE so.caller_uid = us.id AND so.chat_id NOT IN (SELECT chat_id FROM re_prod.answered_calls) AND us.test in (?) AND date_add(co.createdAt, interval '08:00:00' hour_second)>? AND date_add(co.createdAt, interval '08:00:00' hour_second)<? ORDER BY co.id DESC", [test, key1, key2], function(err, result) {
+            con.query("SELECT us.id, us.tel, us.name, us.gender, us.address, us.eyesight, co.user_agent, so.chat_id,so.call_type,so.call_app, co.hangup_reason, so.call_time, so.answer_time, so.hangup_time,co.callee_tel,co.wifi_type,co.wifi_name,cod.caller_setting as settings,cod.changed,cod.changed2,cod.paytime_new,cod.freetime_new,cod.freetime_new2,cod.dispatchList,cod.dispatchArriveList,cod.calleeTelOnline,cod.calleeTelOffline,cod.wifi_pwd FROM re_prod.users AS us,re_prod.signal_order AS so left join call_orders as co on so.chat_id=co.chat_id and co.user_id=co.caller_id left join call_order_detail as cod on so.chat_id=cod.chat_id WHERE so.caller_uid = us.id AND so.chat_id NOT IN (SELECT chat_id FROM re_prod.answered_calls) AND us.test in (?) AND date_add(so.createdAt, interval '08:00:00' hour_second)>=? AND date_add(so.createdAt, interval '08:00:00' hour_second)<? ORDER BY so.createdAt DESC", [test, key1, key2], function(err, result) {
                 if (err) {
                     resolve({
                         code: 10004,
@@ -1388,19 +2368,51 @@ router.get('/getCallDetail', async(ctx, next) => {
             r3[index].bv_status = "异常";
             r3[index].answer_fail_reason = r3[index].hangup_reason;
             r3[index].hangup_reason = '';
+            r3[index].ct = r3[index].call_time;
             r3[index].call_time = moment(r3[index].call_time).format('YYYY-MM-DD HH:mm:ss');
             // r3[index].answer_time = moment(r3[index].answer_time).format('YYYY-MM-DD HH:mm:ss');
             r3[index].hangup_time = moment(r3[index].hangup_time).format('YYYY-MM-DD HH:mm:ss');
             if (r3[index].wifi_type == 1 || r3[index].wifi_type == '1') {
-                r3[index].wifi_type = '热点';
+                r3[index].wifi_type = '手机4G';
             }
             if (r3[index].wifi_type == 0 || r3[index].wifi_type == '0') {
                 r3[index].wifi_type = 'wifi';
             }
+            if (r3[index].hasOwnProperty('call_app') && r3[index].call_app != undefined ) {
+                if (r3[index].call_app == 2) {
+                    r3[index].call_app = '视友app';
+                } else if (r3[index].call_app == 8) {
+                    r3[index].call_app = '做你的眼睛app'
+                } else {
+                    r3[index].call_app = '云瞳设备';
+                }
+            }
+            if ( r3[index].hasOwnProperty('call_type') && r3[index].call_type != undefined ) {
+                if (r3[index].call_type == 0) {
+                    r3[index].call_type = '全部';
+                }
+                if (r3[index].call_type == 1) {
+                    r3[index].call_type = '亲友';
+                }
+                if (r3[index].call_type == 2) {
+                    r3[index].call_type = '志愿者';
+                }
+                if (r3[index].call_type == 3) {
+                    r3[index].call_type = '客服';
+                }
+            }
+            if ( r3[index].hasOwnProperty('user_agent') && r3[index].user_agent != undefined ) {
+                let userAgent = r3[index].user_agent;
+                if (userAgent != null) {
+                    userAgent = userAgent.split('_');
+                    r3[index].mobile = userAgent[3];
+                    r3[index].mobile_version = userAgent[4];
+                }
+            }
         }
         //接通失败
         let re4 = await new Promise((resolve, reject) => {
-            con.query("SELECT us.id, us.tel, us.name, us.gender, us.address, us.eyesight, co.user_agent, co.chat_id, co.hangup_reason, co.call_time, co.answer_time, co.hangup_time,co.callee_tel,co.wifi_type,co.wifi_name FROM re_prod.users AS us, re_prod.answered_calls AS ac left join call_orders as co on ac.chat_id=co.chat_id and co.user_id=co.caller_id WHERE ac.caller_id = us.id AND ac.chat_id NOT IN (SELECT chat_id FROM re_prod.chat_orders) AND us.test in (?) AND date_add(co.createdAt, interval '08:00:00' hour_second)>? AND date_add(co.createdAt, interval '08:00:00' hour_second)<? ORDER BY co.id DESC", [test, key1, key2], function(err, result) {
+            con.query("SELECT us.id, us.tel, us.name, us.gender, us.address, us.eyesight, co.user_agent, ac.chat_id, co.hangup_reason, so.call_time,so.call_type,so.call_app, ac.answer_time, so.hangup_time,so.callee_tel,co.wifi_type,co.wifi_name,cod.caller_setting as settings,cod.changed,cod.changed2,cod.paytime_new,cod.freetime_new,cod.freetime_new2,cod.dispatchList,cod.dispatchArriveList,cod.calleeTelOnline,cod.calleeTelOffline,cod.wifi_pwd FROM re_prod.users AS us,re_prod.signal_order as so,re_prod.answered_calls AS ac left join call_orders as co on ac.chat_id=co.chat_id and co.user_id=co.caller_id left join call_order_detail as cod on ac.chat_id=cod.chat_id WHERE ac.caller_id = us.id AND ac.chat_id=so.chat_id and ac.chat_id NOT IN (SELECT chat_id FROM re_prod.chat_orders) AND us.test in (?) AND date_add(ac.createdAt, interval '08:00:00' hour_second)>=? AND date_add(ac.createdAt, interval '08:00:00' hour_second)<? ORDER BY ac.createdAt DESC", [test, key1, key2], function(err, result) {
                 if (err) {
                     resolve({
                         code: 10004,
@@ -1425,20 +2437,52 @@ router.get('/getCallDetail', async(ctx, next) => {
             r4[index].ba_status = "异常";
             r4[index].bv_status = "异常";
             r4[index].chat_fail_reason = r4[index].hangup_reason;
+            r4[index].ct = r4[index].call_time;
             r4[index].answer_call_time = common.sec_to_time(Math.round((r4[index].answer_time - r4[index].call_time) / 1000));
             r4[index].call_time = moment(r4[index].call_time).format('YYYY-MM-DD HH:mm:ss');
             r4[index].answer_time = moment(r4[index].answer_time).format('YYYY-MM-DD HH:mm:ss');
             r4[index].hangup_time = moment(r4[index].hangup_time).format('YYYY-MM-DD HH:mm:ss');
             if (r4[index].wifi_type == 1 || r4[index].wifi_type == '1') {
-                r4[index].wifi_type = '热点';
+                r4[index].wifi_type = '手机4G';
             }
             if (r4[index].wifi_type == 0 || r4[index].wifi_type == '0') {
                 r4[index].wifi_type = 'wifi';
             }
+            if ( r4[index].hasOwnProperty('call_app') && r4[index].call_app != undefined ) {
+                if (r4[index].call_app == 2) {
+                    r4[index].call_app = '视友app';
+                } else if (r4[index].call_app == 8) {
+                    r4[index].call_app = '做你的眼睛app'
+                } else {
+                    r4[index].call_app = '云瞳设备';
+                }
+            }
+            if ( r4[index].hasOwnProperty('call_type') && r4[index].call_type != undefined ) {
+                if (r4[index].call_type == 0) {
+                    r4[index].call_type = '全部';
+                }
+                if (r4[index].call_type == 1) {
+                    r4[index].call_type = '亲友';
+                }
+                if (r4[index].call_type == 2) {
+                    r4[index].call_type = '志愿者';
+                }
+                if (r4[index].call_type == 3) {
+                    r4[index].call_type = '客服';
+                }
+            }
+            if ( r4[index].hasOwnProperty('user_agent') && r4[index].user_agent != undefined ) {
+                let userAgent = r4[index].user_agent;
+                if (userAgent != null) {
+                    userAgent = userAgent.split('_');
+                    r4[index].mobile = userAgent[3];
+                    r4[index].mobile_version = userAgent[4];
+                }
+            }
         }
         //音视频异常
         let re5 = await new Promise((resolve, reject) => {
-            con.query("SELECT us.id, us.tel, us.name, us.gender, us.address, us.eyesight, ch.ua, co.user_agent, co.chat_id, co.hangup_reason, co.call_time,co.callee_tel,co.wifi_type,co.wifi_name,ac.answer_time, ch.start_time, ch.end_time, ch.duration, ch.flowa, ch.flowb,ch.first_audioa,ch.first_audiob,ch.first_videob FROM re_prod.users AS us,re_prod.answered_calls as ac, re_prod.chat_orders AS ch left join call_orders as co on ch.chat_id=co.chat_id and co.user_id=co.caller_id WHERE ch.caller_uid=us.id and ac.chat_id=ch.chat_id AND (ch.first_audioa = 0 or ch.first_audiob = 0 or ch.first_videob = 0) AND us.test in (?) and date_add(co.createdAt, interval '08:00:00' hour_second)>? AND date_add(co.createdAt, interval '08:00:00' hour_second)<? ORDER BY co.id DESC", [test, key1, key2], function(err, result) {
+            con.query("SELECT us.id, us.tel, us.name, us.gender, us.address, us.eyesight, ch.ua, co.user_agent, ch.chat_id, co.hangup_reason, so.call_time,so.callee_tel,so.call_type,so.call_app,co.wifi_type,co.wifi_name,ac.answer_time, ch.start_time, ch.end_time, ch.duration, ch.flowa, ch.flowb,ch.first_audioa,ch.first_audiob,ch.first_videob,cod.caller_setting as settings,cod.changed,cod.changed2,cod.paytime_new,cod.freetime_new,cod.freetime_new2,cod.dispatchList,cod.dispatchArriveList,cod.calleeTelOnline,cod.calleeTelOffline,cod.wifi_pwd FROM re_prod.users AS us,re_prod.signal_order as so,re_prod.answered_calls as ac,re_prod.chat_orders AS ch left join call_orders as co on ch.chat_id=co.chat_id and co.user_id=co.caller_id left join call_order_detail as cod on cod.chat_id=ch.chat_id WHERE ch.caller_uid=us.id and ac.chat_id=ch.chat_id AND so.chat_id=ch.chat_id and (ch.first_audioa = 0 or ch.first_audiob = 0 or ch.first_videob = 0) AND us.test in (?) and date_add(ch.createdAt, interval '08:00:00' hour_second)>=? AND date_add(ch.createdAt, interval '08:00:00' hour_second)<? ORDER BY ch.createdAt DESC", [test, key1, key2], function(err, result) {
                 if (err) {
                     resolve({
                         code: 10004,
@@ -1461,10 +2505,11 @@ router.get('/getCallDetail', async(ctx, next) => {
             r5[index].av_status = "异常";
             r5[index].av_fail_reason = r5[index].hangup_reason;
             r5[index].answer_call_time = common.sec_to_time(Math.round((r5[index].answer_time - r5[index].call_time) / 1000));
+            r5[index].ct = r5[index].call_time;
             r5[index].call_time = moment(r5[index].call_time).format('YYYY-MM-DD HH:mm:ss');
             r5[index].answer_time = moment(r5[index].answer_time).format('YYYY-MM-DD HH:mm:ss');
-            r5[index].start_time = moment(r5[index].start_time).format('YYYY-MM-DD HH:mm:ss');
-            r5[index].end_time = moment(r5[index].end_time).format('YYYY-MM-DD HH:mm:ss');
+            r5[index].start_time = moment(r5[index].start_time * 1000).format('YYYY-MM-DD HH:mm:ss');
+            r5[index].end_time = moment(r5[index].end_time * 1000).format('YYYY-MM-DD HH:mm:ss');
             r5[index].hangup_time = moment(r5[index].hangup_time).format('YYYY-MM-DD HH:mm:ss');
             r5[index].flowa = (r5[index].flowa / 1024).toFixed(2);
             r5[index].flowb = (r5[index].flowb / 1024).toFixed(2);
@@ -1485,10 +2530,41 @@ router.get('/getCallDetail', async(ctx, next) => {
             }
             r5[index].av_reason = reason1 + reason2 + reason3 + '异常';
             if (r5[index].wifi_type == 1 || r5[index].wifi_type == '1') {
-                r5[index].wifi_type = '热点';
+                r5[index].wifi_type = '手机4G';
             }
             if (r5[index].wifi_type == 0 || r5[index].wifi_type == '0') {
                 r5[index].wifi_type = 'wifi';
+            }
+            if ( r5[index].hasOwnProperty('call_app') &&  r5[index].call_app != undefined ) {
+                if ( r5[index].call_app == 2) {
+                    r5[index].call_app = '视友app';
+                } else if ( r5[index].call_app == 8) {
+                    r5[index].call_app = '做你的眼睛app'
+                } else {
+                    r5[index].call_app = '云瞳设备';
+                }
+            }
+            if (  r5[index].hasOwnProperty('call_type') &&  r5[index].call_type != undefined ) {
+                if ( r5[index].call_type == 0) {
+                    r5[index].call_type = '全部';
+                }
+                if (r5[index].call_type == 1) {
+                    r5[index].call_type = '亲友';
+                }
+                if (r5[index].call_type == 2) {
+                    r5[index].call_type = '志愿者';
+                }
+                if (r5[index].call_type == 3) {
+                    r5[index].call_type = '客服';
+                }
+            }
+            if ( r5[index].hasOwnProperty('user_agent') && r5[index].user_agent != undefined ) {
+                let userAgent = r5[index].user_agent;
+                if (userAgent != null) {
+                    userAgent = userAgent.split('_');
+                    r5[index].mobile = userAgent[3];
+                    r5[index].mobile_version = userAgent[4];
+                }
             }
         }
 
@@ -1514,6 +2590,7 @@ router.get('/getCallDetail', async(ctx, next) => {
         for (let index in r6) {
             r6[index].check_start_time = moment(r6[index].check_start_time).format('YYYY-MM-DD HH:mm:ss');
             r6[index].check_end_time = moment(r6[index].check_end_time).format('YYYY-MM-DD HH:mm:ss');
+            r6[index].ct = r6[index].check_start_time;
             r6[index].call_time = moment(r6[index].check_start_time).format('YYYY-MM-DD HH:mm:ss');
             r6[index].check_time = moment(r6[index].check_start_time).format('YYYY-MM-DD HH:mm:ss');
             if (r6[index].status_code >= 200 && r6[index].status_code < 300) {
@@ -1526,27 +2603,23 @@ router.get('/getCallDetail', async(ctx, next) => {
             }
             r6[index].restore_method = r6[index].play_msg.replace(',', '');
             if (r6[index].wifi_type == 1 || r6[index].wifi_type == '1') {
-                r6[index].wifi_type = '热点';
+                r6[index].wifi_type = '手机4G';
             }
             if (r6[index].wifi_type == 0 || r6[index].wifi_type == '0') {
                 r6[index].wifi_type = 'wifi';
             }
         }
-
         let re = [];
         re = re.concat(r1, r2, r3, r4, r5, r6);
-        re = common.groupAndSort(re, 'id');
-        for (let k in re) {
-            if (typeof(re[k].check_id) != 'undefined') {
-                re[k].call_time = '';
-            }
-        }
+        // re = common.groupAndSort(re, 'id');
+        re = common.sort(re);
+       
         if (type == "excel") {
             let datas = [
-                ['姓名', '手机号', '接听者手机号', '发起自检时间', '自检结束时间', '自检结果', '自检失败原因', '修复方式', '发起呼叫时间', '呼叫状态', '呼叫失败原因', '接听呼叫时间', '接听耗时', '接听状态', '未接听原因', '接通状态', '接通异常原因', '亲友端音频状态', '视友端音频状态', '视友端视频状态', '音视频异常原因', '通话开始时间', '通话结束时间', '挂断时间', '通话时长', '挂断原因', '亲友端流量(kb)', '盲人端流量(kb)', '视友端版本号', '亲友端版本号', '通话id', '网络类型', '网络名称']
+                ['姓名', '手机号', '通话id', '通知人员列表', '通知到达人员列表', '在线人员列表', '离线人员列表', '接听者手机号', '发起自检时间', '自检结束时间', '自检结果', '自检失败原因', '解决方法语音提示', '使用产品', '开放权限', '呼叫端口', '发起呼叫时间', '呼叫状态', '呼叫失败原因', '响应时间', '响应耗时', '响应状态', '未响应原因', '接通状态', '接通异常原因', '亲友端音频状态', '视友端音频状态', '视友端视频状态', '音视频异常原因', '通话开始时间', '通话结束时间', '通话时长', '通话结束原因', '视友端流量(kb)', '亲友端流量(kb)', '视友端版本号', '亲友端版本号', '手机机型', '手机系统版本号', '网络类型', '网络名称', '网络密码', '本次消耗金额', '本次消耗时间', '当前本金余额', '当前赠金余额', '剩余分钟数', '本次获得积分']
             ];
             for (let index in re) {
-                let data = [re[index].name, re[index].tel, re[index].callee_tel, re[index].check_time, re[index].check_end_time, re[index].check_result, re[index].check_fail_reason, re[index].restore_method, re[index].call_time, re[index].call_status, re[index].call_fail_reason, re[index].answer_time, re[index].answer_call_time, re[index].answer_status, re[index].answer_fail_reason, re[index].chat_status, re[index].chat_fail_reason, re[index].aa_status, re[index].ba_status, re[index].bv_status, re[index].av_fail_reason, re[index].start_time, re[index].end_time, re[index].hangup_time, re[index].duration, re[index].hangup_reason, re[index].flowa, re[index].flowb, re[index].user_agent, re[index].ua, re[index].chat_id, re[index].wifi_type, re[index].wifi_name];
+                let data = [re[index].name, re[index].tel, re[index].chat_id, re[index].dispatchList, re[index].dispatchArriveList, re[index].calleeTelOnline, re[index].calleeTelOffline, re[index].callee_tel, re[index].check_time, re[index].check_end_time, re[index].check_result, re[index].check_fail_reason, re[index].restore_method, re[index].call_app, re[index].settings, re[index].call_type, re[index].call_time, re[index].call_status, re[index].call_fail_reason, re[index].answer_time, re[index].answer_call_time, re[index].answer_status, re[index].answer_fail_reason, re[index].chat_status, re[index].chat_fail_reason, re[index].aa_status, re[index].ba_status, re[index].bv_status, re[index].av_fail_reason, re[index].start_time, re[index].end_time, re[index].duration, re[index].hangup_reason, re[index].flowb, re[index].flowa, re[index].user_agent, re[index].ua, re[index].mobile, re[index].mobile_version, re[index].wifi_type, re[index].wifi_name, re[index].wifi_pwd, re[index].changed, re[index].changed2, re[index].paytime_new, re[index].freetime_new, re[index].freetime_new2, ''];
                 datas.push(data);
             }
 
@@ -1562,7 +2635,14 @@ router.get('/getCallDetail', async(ctx, next) => {
                 data: 'uploads/calldetail' + dd + '.xlsx'
             };
         } else {
-            ctx.response.body = re;
+            let start = (page - 1) * pagenum;
+            let end = page * pagenum + 1;
+            let total = re.length;
+            let records = re.slice(start, end);
+            ctx.response.body = {
+                records: records,
+                total: total
+            };
         }
     } else {
         //全部成功
@@ -1704,8 +2784,8 @@ router.get('/getCallDetail', async(ctx, next) => {
             r5[index].av_status = "异常";
             r5[index].call_time = moment(r5[index].call_time).format('YYYY-MM-DD HH:mm:ss');
             r5[index].answer_time = moment(r5[index].answer_time).format('YYYY-MM-DD HH:mm:ss');
-            r5[index].start_time = moment(r5[index].start_time).format('YYYY-MM-DD HH:mm:ss');
-            r5[index].end_time = moment(r5[index].end_time).format('YYYY-MM-DD HH:mm:ss');
+            r5[index].start_time = moment(r5[index].start_time * 1000).format('YYYY-MM-DD HH:mm:ss');
+            r5[index].end_time = moment(r5[index].end_time * 1000).format('YYYY-MM-DD HH:mm:ss');
             r5[index].hangup_time = moment(r5[index].hangup_time).format('YYYY-MM-DD HH:mm:ss');
             r5[index].flowa = (r5[index].flowa / 1024).toFixed(2);
             r5[index].flowb = (r5[index].flowb / 1024).toFixed(2);
@@ -3070,5 +4150,309 @@ router.get('/selfCheckFailReason', async(ctx, next) => {
         }
     }
     ctx.response.body = re;
+});
+
+router.get('/getCalleeDetail', async(ctx, next) => {
+    let role = ctx.query.role;
+    let page = ctx.query.pageNo;
+    let pagenum = ctx.query.pageSize;
+    let type = ctx.query.type;
+    let key = ctx.query['key[]'];
+    let start = 0;
+    let end = 0;
+    let dd = moment(Date.now()).format('YYYYMMDD');
+
+    if (typeof(key) != 'undefined') {
+        key1 = moment(key[0]).add(8, 'h').utc().format('YYYY-MM-DD HH:mm:ss');
+        key2 = moment(key[1]).add(8, 'h').utc().format('YYYY-MM-DD HH:mm:ss');
+    } else {
+        key1 = moment(Date.now()).format('YYYY-MM-DD');
+        key2 = moment(Date.now() + 24 * 60 * 60 * 1000).format('YYYY-MM-DD');
+        key1 = key1 + ' 00:00:00';
+        key2 = key2 + ' 00:00:00';
+    }
+    let total = await new Promise((resolve, reject) => {
+        con.query("select count(*) as num from dispatch_orders where date_add(createdAt, interval '08:00:00' hour_second)>? AND date_add(createdAt, interval '08:00:00' hour_second)<?", [key1, key2], function(err, result) {
+            if (err) reject(err);
+            resolve(result);
+        })
+    });
+    if (total && total.length > 0) {
+        total = total[0].num;
+    }
+    if (type == 1) {
+        start = (parseInt(page) - 1) * pagenum;
+        end = parseInt(pagenum);
+    }
+    if (type == 2) {
+        start = 0;
+        end = total - 1;
+    }
+    let res = await new Promise((resolve, reject) => {
+        con.query("select u.id as user_id,u.name,do.chat_id,do.caller_tel,do.caller_name,do.callee_tel,do.callee_role,do.call_time,do.caller_ua,do.callee_ua,do.answer_result,do.answer_desc from dispatch_orders as do,users as u where u.tel=do.callee_tel and date_add(do.createdAt, interval '08:00:00' hour_second)>? AND date_add(do.createdAt, interval '08:00:00' hour_second)<? order by do.createdAt DESC limit ?,?", [key1, key2, start, end], function(err, result) {
+            if (err) reject(err);
+            resolve(result);
+        })
+    });
+    for (let index in res) {
+        if (res[index].answer_result != 200) {
+            res[index].answer_text = '未接听';
+            res[index].noanswer_reason = res[index].answer_desc;
+        } else {
+            res[index].answer_text = '已接听';
+            res[index].noanswer_reason = '';
+        }
+        let calls = await new Promise((resolve, reject) => {
+            con.query("select hangup_reason,user_agent from call_orders where chat_id=? and callee_id=?", [res[index].chat_id, res[index].user_id], function(err, result) {
+                if (err) reject(err);
+                resolve(result);
+            })
+        });
+        if (calls && calls.length > 0) {
+            res[index].hangup_reason = calls[0].hangup_reason;
+            res[index].user_agent = calls[0].user_agent;
+        } else {
+            res[index].hangup_reason = '';
+            res[index].user_agent = '';
+        }
+        let chat = await new Promise((resolve, reject) => {
+            con.query("select * from chat_orders where chat_id=? and callee_uid=?", [res[index].chat_id, res[index].user_id], function(err, result) {
+                if (err) reject(err);
+                resolve(result);
+            });
+        });
+        if (chat && chat.length > 0) {
+            res[index].duration = chat[0].duration;
+            res[index].first_audioa = chat[0].first_audioa;
+            res[index].first_audiob = chat[0].first_audiob;
+            res[index].first_videob = chat[0].first_videob;
+            res[index].start_time = chat[0].start_time;
+            res[index].end_time = chat[0].end_time;
+            res[index].flowa = chat[0].flowa;
+            res[index].flowb = chat[0].flowb;
+        } else {
+            res[index].duration = 0;
+            res[index].first_audioa = 0;
+            res[index].first_audiob = 0;
+            res[index].first_videob = 0;
+            res[index].start_time = 0;
+            res[index].end_time = 0;
+            res[index].flowa = 0;
+            res[index].flowb = 0;
+        }
+
+        res[index].xgpushtime = 0;
+        res[index].jgpushtime = 0;
+        let xgpt = await new Promise((resolve, reject) => {
+            con.query("select sendTime,arrivedTime,ssArrivedTime,ssShowedTime from push_notify where chat_id=? and callee_tel=? and push_type='xg'", [res[index].chat_id, res[index].callee_tel], function(err, result) {
+                if (err) reject(err);
+                resolve(result);
+            })
+        });
+        if (xgpt && xgpt.length > 0) {
+            if (xgpt[0].sendTime > 0) {
+                res[index].xgpushtime = moment(xgpt[0].sendTime).format('YYYY-MM-DD HH:mm:ss');
+            } else {
+                res[index].xgpushtime = xgpt[0].sendTime;
+            }
+            if (xgpt[0].arrivedTime > 0) {
+                res[index].xgarrivedTime = moment(xgpt[0].arrivedTime).format('YYYY-MM-DD HH:mm:ss');
+            } else {
+                res[index].xgarrivedTime = xgpt[0].arrivedTime;
+            }
+            if (xgpt[0].ssArrivedTime > 0) {
+                res[index].ssArrivedTime = moment(xgpt[0].ssArrivedTime).format('YYYY-MM-DD HH:mm:ss');
+            } else {
+                res[index].ssArrivedTime = xgpt[0].ssArrivedTime;
+            }
+            if (xgpt[0].ssShowedTime > 0) {
+                res[index].ssShowedTime = moment(xgpt[0].ssShowedTime).format('YYYY-MM-DD HH:mm:ss');
+            } else {
+                res[index].ssShowedTime = xgpt[0].ssShowedTime;
+            }
+
+        }
+        let jgpt = await new Promise((resolve, reject) => {
+            con.query("select sendTime,arrivedTime,ssArrivedTime,ssShowedTime from push_notify where chat_id=? and callee_tel=? and push_type='jg'", [res[index].chat_id, res[index].callee_tel], function(err, result) {
+                if (err) reject(err);
+                resolve(result);
+            })
+        });
+        if (jgpt && jgpt.length > 0) {
+            if (xgpt[0].sendTime > 0) {
+                res[index].jgpushtime = moment(xgpt[0].sendTime).format('YYYY-MM-DD HH:mm:ss');
+            } else {
+                res[index].jgpushtime = xgpt[0].sendTime;
+            }
+            if (xgpt[0].arrivedTime > 0) {
+                res[index].jgarrivedTime = moment(xgpt[0].arrivedTime).format('YYYY-MM-DD HH:mm:ss');
+            } else {
+                res[index].jgarrivedTime = xgpt[0].arrivedTime;
+            }
+
+            // res[index].ssArrivedTime = moment(xgpt[0].ssArrivedTime).format('YYYY-MM-DD HH:mm:ss');
+            // res[index].ssShowedTime = moment(xgpt[0].ssShowedTime).format('YYYY-MM-DD HH:mm:ss');
+        }
+        if (res[index].start_time > 0) {
+            res[index].chat_status = '成功';
+        } else {
+            res[index].chat_status = '失败';
+        }
+        if (res[index].answer_time > 0) {
+            res[index].answer_time = moment(res[index].answer_time).format('YYYY-MM-DD HH:mm:ss');
+        }
+
+        if (res[index].duration > 0) {
+            res[index].chat_issue = '正常';
+        } else {
+            res[index].chat_issue = '异常';
+            if (!res[index].first_audioa || !res[index].first_audiob || !res[index].first_videob) {
+                res[index].video_issue = '音视频异常';
+            }
+            res[index].video_issue_reason = '';
+            if (res[index].first_audioa == 0) {
+                res[index].video_issue_reason += '亲友端音频异常,';
+            }
+            if (res[index].first_audiob == 0) {
+                res[index].video_issue_reason += '视友端音频异常,';
+            }
+            if (res[index].first_videob == 0) {
+                res[index].video_issue_reason += '视友端视频异常';
+            }
+            res[index].issue_reason = res[index].hangup_reason;
+        }
+        if (res[index].start_time > 0) {
+            res[index].start_time = moment(res[index].start_time * 1000).format('YYYY-MM-DD HH:mm:ss');
+        } else {
+            res[index].start_time = 0;
+        }
+        if (res[index].end_time > 0) {
+            res[index].end_time = moment(res[index].end_time * 1000).format('YYYY-MM-DD HH:mm:ss');
+        } else {
+            res[index].end_time = 0;
+        }
+        if (res[index].duration > 0) {
+            res[index].duration = common.sec_to_time(res[index].duration);
+        }
+
+        res[index].flowa = (res[index].flowa / 1024).toFixed(2);
+        let user_agent = res[index].user_agent;
+        if (user_agent && user_agent.length > 0) {
+            user_agent = user_agent.split('_');
+        }
+        res[index].mobile = user_agent[3];
+        res[index].mobile_version = user_agent[4];
+    }
+    if (type == 2) {
+        let datas = [
+            ['姓名', '手机号', '通话id', '接起视友手机号', '系统推送时间', '极光推送时间', '信鸽推送时间', '信鸽推送响应时间', '极光推送响应时间', '系统推送响应时间', '视友端显示时间', '接听状态', '未接听原因', '接通状态', '接听响应时间', '接通情况', '异常后提示语', '接收的音视频情况', '音视频异常原因', '通话结束情况', '通话开始时间', '通话结束时间', '通话时长', '亲友端流量(kb)', '视友端版本号', '亲友端版本号', '亲友网络类型', '网络名称', '手机型号', '手机系统版本号', '本次获得积分', '当前积分', '本次服务评价', '总评价']
+        ];
+        for (let index in res) {
+            let data = [res[index].name, res[index].callee_tel, res[index].chat_id, res[index].caller_tel, res[index].systemPushTime, res[index].jgpushtime, res[index].xgpushtime, res[index].xgarrivedTime, res[index].jgarrivedTime, res[index].ssArrivedTime, res[index].ssShowedTime, res[index].answer_text, res[index].noanswer_reason, res[index].chat_status, res[index].answer_time, res[index].chat_issue, res[index].issue_reason, res[index].video_issue, res[index].video_issue_reason, res[index].hangup_reason, res[index].start_time, res[index].end_time, res[index].duration, res[index].flowa, res[index].ub, res[index].ua, res[index].wifi_type, res[index].wifi_name, res[index].mobile, res[index].mobile_version, '', '', '', ''];
+            datas.push(data);
+        }
+        let buffer = xlsx.build([{
+            name: 'sheet1',
+            data: datas
+        }]);
+        fs.writeFileSync('public/uploads/calleeChatDetail' + dd + '.xlsx', buffer, { 'flag': 'w' }); //生成excel
+        let tmp = {
+            code: 200,
+            msg: '操作成功',
+            data: 'uploads/calleeChatDetail' + dd + '.xlsx'
+        };
+        ctx.response.body = tmp;
+    } else {
+        ctx.response.body = {
+            code: 200,
+            data: {
+                records: res,
+                total: total
+            }
+        };
+    }
+});
+
+/**
+ * 推送统计
+ */
+router.get('/pushRate', async(ctx, next) => {
+    let key = ctx.query['key[]'];
+    let page = ctx.query.pageNo;
+    let pagenum = ctx.query.pageSize;
+    let type = ctx.query.type;
+    let dd = moment(Date.now()).format('YYYYMMDD');
+    if (typeof(key) != 'undefined') {
+        key1 = moment(key[0]).add(8, 'h').utc().format('YYYY-MM-DD HH:mm:ss');
+        key2 = moment(key[1]).add(8, 'h').utc().format('YYYY-MM-DD HH:mm:ss');
+    } else {
+        key1 = moment(Date.now()).format('YYYY-MM-DD');
+        key2 = moment(Date.now() + 24 * 60 * 60 * 1000).format('YYYY-MM-DD');
+        key1 = key1 + ' 00:00:00';
+        key2 = key2 + ' 00:00:00';
+    }
+    let tmp = await new Promise((resolve, reject) => {
+        con.query("SELECT chat_id,COUNT(*) AS total FROM push_notify WHERE DATE_ADD(createdAt, INTERVAL '08:00:00' HOUR_SECOND)>? AND DATE_ADD(createdAt, INTERVAL '08:00:00' HOUR_SECOND)<? GROUP BY chat_id order by chat_id desc", [key1, key2], function(err, result) {
+            if (err) reject(err);
+            resolve(result);
+        })
+    });
+    let tmp2 = await new Promise((resolve, reject) => {
+        con.query("SELECT chat_id,COUNT(*) AS arrivenum FROM push_notify WHERE DATE_ADD(createdAt, INTERVAL '08:00:00' HOUR_SECOND)>? AND DATE_ADD(createdAt, INTERVAL '08:00:00' HOUR_SECOND)<? AND (arrivedTime > 0 OR ssArrivedTime > 0 OR ssShowedTime > 0) GROUP BY chat_id", [key1, key2], function(err, result) {
+            if (err) reject(err);
+            resolve(result);
+        })
+    });
+    if (tmp && tmp.length > 0) {
+        for (let index in tmp) {
+            let c = await new Promise((resolve, reject) => {
+                con.query("select caller_tel,caller_name,call_time from dispatch_orders where chat_id=? limit 0,1", [tmp[index].chat_id], function(err, result) {
+                    if (err) reject(err);
+                    resolve(result);
+                })
+            });
+            if (c && c.length > 0) {
+                tmp[index].caller_tel = c[0].caller_tel;
+                tmp[index].caller_name = c[0].caller_name;
+                tmp[index].call_time = moment(c[0].call_time).format('YYYY-MM-DD HH:mm:ss');
+            }
+            for (let k in tmp2) {
+                if (tmp2[k].chat_id == tmp[index].chat_id) {
+                    tmp[index].arrivenum = tmp2[k].arrivenum;
+                    tmp[index].arriveRate = Math.round(parseFloat(tmp2[k].arrivenum) / parseFloat(tmp[index].total) * 10000) / 100.00 + "%";
+                }
+            }
+        }
+    }
+    if (type == "excel") {
+        let datas = [
+            ['呼叫者手机号', '呼叫者姓名', '通话ID', '通知用户数量', '到达用户数', '推送到达率', '呼叫时间']
+        ];
+        for (let index in tmp) {
+            let data = [tmp[index].caller_tel, tmp[index].caller_name, tmp[index].chat_id, tmp[index].total, tmp[index].arrivenum, tmp[index].arriveRate, tmp[index].call_time];
+            datas.push(data);
+        }
+        let buffer = xlsx.build([{
+            name: 'sheet1',
+            data: datas
+        }]);
+
+        fs.writeFileSync('public/uploads/pushRate' + dd + '.xlsx', buffer, { 'flag': 'w' }); //生成excel
+        ctx.response.body = {
+            code: 200,
+            msg: '操作成功',
+            data: 'uploads/pushRate' + dd + '.xlsx'
+        };
+    } else {
+        let start = (page - 1) * pagenum;
+        let end = page * pagenum + 1;
+        let total = tmp.length;
+        let records = tmp.slice(start, end);
+        ctx.response.body = {
+            records: records,
+            total: total
+        };
+    }
+
 });
 module.exports = router;

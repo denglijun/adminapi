@@ -21,6 +21,11 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: false,
             comment: '操作内容'
         },
+        changeJson: {
+            type: DataTypes.STRING(225),
+            default: '',
+            comment: '操作影响的表与id'
+        },
         remark: {
             type: DataTypes.STRING(100),
             allowNull: true,

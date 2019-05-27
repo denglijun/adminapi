@@ -1,11 +1,10 @@
-const db = require('./appdb')();
+const con = require('./appdb4'); //服务器正式库
 const sqls = require('./tongjisql');
 const sysdb = require('./sysdb');
 const moment = require('moment');
 const time = moment().format('YYYY-MM-DD HH:mm:ss');
 const yestime = moment(Date.now() - 24 * 60 * 60 * 1000).format('YYYY-MM-DD'); // 统计时的昨天日期
-db.init();
-const con = db.connect();
+
 var blindnum = new Promise(function(resolve, reject) {
     con.query(sqls.blindnum, [], function(err, result) {
         if (!err) {
